@@ -62,3 +62,11 @@ With all this information, show a progress bar with the total work remaining.
 * Read the bytes from the `results` channel
 * Write to the file on disk
 * Update a progress bar to give the user an idea about the status of the downloads
+
+## Prototype
+
+The prototype is a CLI that wraps a GET HTTP request in a 45s timeout independent of the HTTP client's timeout. It also includes 3 retries.
+
+```console
+$ go run main.go <URL> # e.g. go run main.go https://github.com/cuducos/chunk
+```
