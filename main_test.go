@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -39,7 +40,7 @@ func testServer(t *testing.T) *httptest.Server {
 	)
 }
 
-func TestGet(t *testing.T) {
+func TestDownload(t *testing.T) {
 	s := testServer(t)
 	defer s.Close()
 	for _, tc := range []struct {
@@ -52,16 +53,29 @@ func TestGet(t *testing.T) {
 		{"timeout", "/slow", nil},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			d := downloader{&http.Client{Timeout: 250 * time.Millisecond}, 3}
-			got, err := d.download(s.URL + tc.path)
-			if string(got) != string(tc.expected) {
-				t.Errorf("expected %s, got %s", string(tc.expected), string(got))
+			d := NewDownloader()
+			d.TimeoutPerChunk = 250 * time.Millisecond
+			d.Client.Timeout = 250 * time.Millisecond
+			d.MaxRetriesPerChunk = 3
+			ch := d.Download(s.URL + tc.path)
+			got := <-ch
+			var body []byte
+			if got.Error == nil {
+				var err error
+				body, err = os.ReadFile(got.DownloadedFilePath)
+				os.Remove(got.DownloadedFilePath)
+				if err != nil {
+					t.Errorf("could not read dowloaded file %s", got.DownloadedFilePath)
+				}
 			}
-			if tc.expected == nil && err == nil {
+			if string(body) != string(tc.expected) {
+				t.Errorf("expected %s, got %s", string(tc.expected), string(body))
+			}
+			if tc.expected == nil && got.Error == nil {
 				t.Error("expected an error, but got nil")
 			}
-			if tc.expected != nil && err != nil {
-				t.Errorf("expected no error, but got %s", err)
+			if tc.expected != nil && got.Error != nil {
+				t.Errorf("expected no error, but got %s", got.Error)
 			}
 		})
 	}

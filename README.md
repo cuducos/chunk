@@ -65,8 +65,37 @@ With all this information, show a progress bar with the total work remaining.
 
 ## Prototype
 
-The prototype is a CLI that wraps a GET HTTP request in a 45s timeout independent of the HTTP client's timeout. It also includes 3 retries.
+The prototype is a CLI that wraps a GET HTTP request in a 45s timeout independent of the HTTP client's timeout. It also includes 3 retries by default.
 
 ```console
 $ go run main.go <URL> # e.g. go run main.go https://github.com/cuducos/chunk
+```
+
+The API should work like this:
+
+```go
+// simple use case
+d := NewDownloader()
+ch := d.Dowload(urls)
+
+// partial customization
+d := NewDownloader()
+d.MaxRetriesPerChunk = 42
+ch := d.Dowload(urls)
+
+// full control
+d := chunk.Downloader{...}
+ch := d.Download(urls)
+```
+
+The resulting channel will transmit data about each download:
+
+```go
+type DownloadStatus struct {
+	URL                 string
+	DownloadedFilePath  string
+	FileSizeBytes       uint64
+	DownloadedFileBytes uint64
+	Error               error
+}
 ```
