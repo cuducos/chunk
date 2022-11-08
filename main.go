@@ -146,7 +146,7 @@ func (d *Downloader) downloadFile(ctx context.Context, u string) ([]byte, error)
 			return nil
 		},
 		retry.Attempts(d.MaxRetriesPerChunk),
-		retry.MaxDelay(d.TimeoutPerChunk),
+		retry.MaxDelay(d.WaitBetweenRetries),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error downloading %s: %w", u, err)
