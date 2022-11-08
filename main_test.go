@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -141,5 +142,37 @@ func TestDownload_Retry(t *testing.T) {
 				t.Error("expected channel closed, but did not get it")
 			}
 		})
+	}
+}
+
+func TestDownloadWithContext_ErrorUserTimeout(t *testing.T) {
+	timeout := 500 * time.Millisecond
+	userTimeout := 250 * time.Millisecond // please note that the user timeout is less than the timeout per chunk.
+	s := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			time.Sleep(2 * timeout)
+		},
+	))
+	defer s.Close()
+	d := Downloader{
+		TimeoutPerChunk:               timeout,
+		MaxRetriesPerChunk:            4,
+		MaxParallelDownloadsPerServer: 1,
+		ChunkSize:                     1024,
+		WaitBetweenRetries:            0 * time.Second,
+	}
+	userCtx, cancFunc := context.WithTimeout(context.Background(), userTimeout)
+	defer cancFunc()
+
+	ch := d.DownloadWithContext(userCtx, s.URL)
+	status := <-ch
+	if status.Error == nil {
+		t.Error("expected an error, but got nil")
+	}
+	if !strings.Contains(status.Error.Error(), "#4") {
+		t.Error("expected #4 (configured number of retries), but did not get it")
+	}
+	if _, ok := <-ch; ok {
+		t.Error("expected channel closed, but did not get it")
 	}
 }
