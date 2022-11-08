@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -55,7 +56,7 @@ func (s *DownloadStatus) IsFinished() bool {
 type Downloader struct {
 	// Client is the HTTP client used for every request needed to download all
 	// the files.
-	Client *http.Client
+	client *http.Client
 
 	// TimeoutPerChunk is the timeout for the download of each chunk from each
 	// URL. A chunk is a part of a file requested using the content range HTTP
@@ -90,8 +91,7 @@ func (d *Downloader) downloadFileWithContext(ctx context.Context, u string) ([]b
 	if err != nil {
 		return nil, fmt.Errorf("error creating the request for %s: %w", u, err)
 	}
-	req = req.WithContext(ctx)
-	resp, err := d.Client.Do(req)
+	resp, err := d.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error sending a get http request to %s: %w", u, err)
 	}
@@ -108,7 +108,7 @@ func (d *Downloader) downloadFileWithContext(ctx context.Context, u string) ([]b
 }
 
 func (d *Downloader) downloadFileWithTimeout(userCtx context.Context, u string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), d.Client.Timeout)
+	ctx, cancel := context.WithTimeout(userCtx, d.TimeoutPerChunk) // need to propagate context, which might contain app-specific data.
 	defer cancel()
 	ch := make(chan []byte)
 	errs := make(chan error)
@@ -146,7 +146,7 @@ func (d *Downloader) downloadFile(ctx context.Context, u string) ([]byte, error)
 			return nil
 		},
 		retry.Attempts(d.MaxRetriesPerChunk),
-		retry.MaxDelay(d.Client.Timeout),
+		retry.MaxDelay(d.TimeoutPerChunk),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error downloading %s: %w", u, err)
@@ -158,6 +158,9 @@ func (d *Downloader) downloadFile(ctx context.Context, u string) ([]byte, error)
 // DownloadWithContext is a version of Download that takes a context. The
 // context can be used to stop all downloads in progress.
 func (d *Downloader) DownloadWithContext(ctx context.Context, urls ...string) <-chan DownloadStatus {
+	if d.client == nil {
+		d.client = &http.Client{Timeout: d.TimeoutPerChunk}
+	}
 	ch := make(chan DownloadStatus)
 	var wg sync.WaitGroup
 	for _, u := range urls {
@@ -166,18 +169,13 @@ func (d *Downloader) DownloadWithContext(ctx context.Context, urls ...string) <-
 			defer wg.Done()
 			s := DownloadStatus{URL: u}
 			defer func() { ch <- s }()
-			f, err := os.CreateTemp("", "chunk-download-")
-			if err != nil {
-				s.Error = err
-				return
-			}
-			s.DownloadedFilePath = f.Name()
+			s.DownloadedFilePath = filepath.Join(os.TempDir(), filepath.Base(u))
 			b, err := d.downloadFile(ctx, u)
 			if err != nil {
 				s.Error = err
 				return
 			}
-			if err := os.WriteFile(f.Name(), b, 0655); err != nil {
+			if err := os.WriteFile(s.DownloadedFilePath, b, 0655); err != nil {
 				s.Error = err
 				return
 			}
@@ -200,32 +198,25 @@ func (d *Downloader) Download(urls ...string) <-chan DownloadStatus {
 
 // NewDownloader creates a downloader with the defalt configuration. Check
 // the constants in this package for their values.
-func NewDownloader() *Downloader {
+func DefaultDownloader() *Downloader {
 	return &Downloader{
-		&http.Client{Timeout: DefaultTimeoutPerChunk},
-		DefaultTimeoutPerChunk,
-		DefaultMaxParallelDownloadsPerServer,
-		DefaultMaxRetriesPerChunk,
-		DefaultChunkSize,
-		DefaultWaitBetweenRetries,
+		TimeoutPerChunk:               DefaultTimeoutPerChunk,
+		MaxParallelDownloadsPerServer: DefaultMaxParallelDownloadsPerServer,
+		MaxRetriesPerChunk:            DefaultMaxRetriesPerChunk,
+		ChunkSize:                     DefaultChunkSize,
+		WaitBetweenRetries:            DefaultWaitBetweenRetries,
 	}
 }
 
 func main() {
-	d := NewDownloader()
-	for s := range d.Download(os.Args[1]) {
+	d := DefaultDownloader()
+	for s := range d.Download(os.Args[1:len(os.Args)]...) {
 		if s.Error != nil {
 			log.Fatal(s.Error)
 		}
 		if s.IsFinished() {
-			b, err := os.ReadFile(s.DownloadedFilePath)
-			if err != nil {
-				log.Fatal(err)
-			}
-			fmt.Print(string(b))
-			if err := os.Remove(s.DownloadedFilePath); err != nil {
-				log.Fatal(err)
-			}
+			log.Printf("Downloaded %s (%d bytes) to %s (%d bytes).", s.URL, s.FileSizeBytes, s.DownloadedFilePath, s.DownloadedFileBytes)
 		}
 	}
+	log.Println("All download(s) finished successfully.")
 }
