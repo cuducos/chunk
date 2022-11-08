@@ -146,11 +146,11 @@ func TestDownload_Retry(t *testing.T) {
 }
 
 func TestDownloadWithContext_ErrorUserTimeout(t *testing.T) {
-	timeout := 500 * time.Millisecond
 	userTimeout := 250 * time.Millisecond // please note that the user timeout is less than the timeout per chunk.
+	timeout := 10 * userTimeout
 	s := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
-			time.Sleep(2 * timeout)
+			time.Sleep(2 * userTimeout) // this time is greater than the user timeout, but shorter than the timeout per chunk.
 		},
 	))
 	defer s.Close()
