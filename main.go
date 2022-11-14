@@ -136,8 +136,7 @@ func (d *Downloader) downloadFileWithTimeout(userCtx context.Context, u string) 
 func (d *Downloader) getContentSizeHeader(ctx context.Context, u string) (uint64, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, u, nil)
 	if err != nil {
-		err = fmt.Errorf("error creating the request for %s: %w", u, err)
-		return 0, err
+		return 0, fmt.Errorf("error creating the request for %s: %w", u, err)
 	}
 	resp, err := d.client.Do(req)
 	if err != nil {
