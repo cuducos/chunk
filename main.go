@@ -140,8 +140,7 @@ func (d *Downloader) getContentSizeHeader(ctx context.Context, u string) (uint64
 	}
 	resp, err := d.client.Do(req)
 	if err != nil {
-		err = fmt.Errorf("error sending a get http request to %s: %w", u, err)
-		return 0, err
+		return 0, fmt.Errorf("error sending a get http request to %s: %w", u, err)
 	}
 	defer resp.Body.Close()
 	return uint64(req.ContentLength), nil
