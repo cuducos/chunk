@@ -145,8 +145,7 @@ func (d *Downloader) getContentSizeHeader(ctx context.Context, u string) (uint64
 		return 0, err
 	}
 	defer resp.Body.Close()
-	ds := uint64(req.ContentLength)
-	return ds, nil
+	return uint64(req.ContentLength), nil
 }
 
 func (d *Downloader) downloadFile(ctx context.Context, u string) ([]byte, error) {
