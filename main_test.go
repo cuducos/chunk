@@ -176,3 +176,28 @@ func TestDownloadWithContext_ErrorUserTimeout(t *testing.T) {
 		t.Error("expected channel closed, but did not get it")
 	}
 }
+
+func TestDownload_Chunks(t *testing.T) {
+	d := DefaultDownloader()
+	got := d.chunks(15_000)
+	chunks := []chunk{{0, 8191}, {8192, 14999}}
+	sizes := []uint64{8192, 6808}
+	headers := []string{"bytes=0-8191", "bytes=8192-14999"}
+	if len(got) != len(chunks) {
+		t.Errorf("expected %d chunks, got %d", len(chunks), len(got))
+	}
+	for i := range got {
+		if got[i].start != chunks[i].start {
+			t.Errorf("expected chunk #%d to start at %d, got %d", i+1, chunks[i].start, got[i].start)
+		}
+		if got[i].end != chunks[i].end {
+			t.Errorf("expected chunk #%d to end at %d, got %d", i+1, chunks[i].end, got[i].end)
+		}
+		if got[i].size() != sizes[i] {
+			t.Errorf("expected chunk #%d to have size %d, got %d", i+1, sizes[i], got[i].size())
+		}
+		if got[i].rangeHeader() != headers[i] {
+			t.Errorf("expected chunk #%d header to be %s, got %s", i+1, headers[i], got[i].rangeHeader())
+		}
+	}
+}
