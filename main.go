@@ -107,7 +107,7 @@ func (d *Downloader) downloadFileWithContext(ctx context.Context, u string) ([]b
 	return b.Bytes(), nil
 }
 
-func (d *Downloader) downloadFileWithTimeout(userCtx context.Context, u string) ([]byte, error) {
+func (d *Downloader) downloadFileWithTimeout(userCtx context.Context, u string) (b []byte, err error) {
 	ctx, cancel := context.WithTimeout(userCtx, d.TimeoutPerChunk) // need to propagate context, which might contain app-specific data.
 	defer cancel()
 	ch := make(chan []byte)
@@ -123,20 +123,37 @@ func (d *Downloader) downloadFileWithTimeout(userCtx context.Context, u string) 
 	select {
 	case <-userCtx.Done():
 		cancel()
-		return nil, userCtx.Err()
+		err = userCtx.Err()
 	case <-ctx.Done():
-		return nil, fmt.Errorf("request to %s ended due to timeout: %w", u, ctx.Err())
+		err = fmt.Errorf("request to %s ended due to timeout: %w", u, ctx.Err())
 	case err := <-errs:
-		return nil, fmt.Errorf("request to %s failed: %w", u, err)
-	case b := <-ch:
-		return b, nil
+		err = fmt.Errorf("request to %s failed: %w", u, err)
+	case b = <-ch:
+		return
 	}
+	return
 }
 
-func (d *Downloader) downloadFile(ctx context.Context, u string) ([]byte, error) {
+func (d *Downloader) getContentSizeHeader(ctx context.Context, u string) (ds uint64, err error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, u, nil)
+	if err != nil {
+		err = fmt.Errorf("error creating the request for %s: %w", u, err)
+		return
+	}
+	resp, err := d.client.Do(req)
+	if err != nil {
+		err = fmt.Errorf("error sending a get http request to %s: %w", u, err)
+		return
+	}
+	defer resp.Body.Close()
+	ds = uint64(req.ContentLength)
+	return ds, nil
+}
+
+func (d *Downloader) downloadFile(ctx context.Context, u string) (b []byte, err error) {
 	ch := make(chan []byte, 1)
 	defer close(ch)
-	err := retry.Do(
+	err = retry.Do(
 		func() error {
 			b, err := d.downloadFileWithTimeout(ctx, u)
 			if err != nil {
@@ -151,7 +168,7 @@ func (d *Downloader) downloadFile(ctx context.Context, u string) ([]byte, error)
 	if err != nil {
 		return nil, fmt.Errorf("error downloading %s: %w", u, err)
 	}
-	b := <-ch
+	b = <-ch
 	return b, nil
 }
 
@@ -179,8 +196,17 @@ func (d *Downloader) DownloadWithContext(ctx context.Context, urls ...string) <-
 				s.Error = err
 				return
 			}
-			s.DownloadedFileBytes = uint64(len(b))
-			s.FileSizeBytes = uint64(len(b))
+			ds, err := d.getContentSizeHeader(ctx, u)
+			if err != nil {
+				s.Error = err
+				return
+			}
+			s.DownloadedFileBytes = ds
+			if ds == 0 {
+				s.FileSizeBytes = uint64(len(b))
+			} else {
+				s.FileSizeBytes = ds
+			}
 		}(u)
 	}
 	go func() {
