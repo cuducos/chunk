@@ -155,6 +155,32 @@ func (d *Downloader) downloadFile(ctx context.Context, u string) ([]byte, error)
 	return b, nil
 }
 
+type chunk struct {
+	start uint64
+	end   uint64
+}
+
+func (c chunk) size() uint64        { return (c.end + 1) - c.start }
+func (c chunk) rangeHeader() string { return fmt.Sprintf("bytes=%d-%d", c.start, c.end) }
+
+func (d *Downloader) chunks(t uint64) []chunk {
+	var start uint64
+	last := t - 1
+	var c []chunk
+	for {
+		end := start + d.ChunkSize - 1
+		if end > last {
+			end = last
+		}
+		c = append(c, chunk{start, end})
+		if end == last {
+			break
+		}
+		start = end + 1
+	}
+	return c
+}
+
 // DownloadWithContext is a version of Download that takes a context. The
 // context can be used to stop all downloads in progress.
 func (d *Downloader) DownloadWithContext(ctx context.Context, urls ...string) <-chan DownloadStatus {
