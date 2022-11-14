@@ -179,10 +179,11 @@ func TestDownloadWithContext_ErrorUserTimeout(t *testing.T) {
 
 func TestDownload_Chunks(t *testing.T) {
 	d := DefaultDownloader()
-	got := d.chunks(15_000)
-	chunks := []chunk{{0, 8191}, {8192, 14999}}
-	sizes := []uint64{8192, 6808}
-	headers := []string{"bytes=0-8191", "bytes=8192-14999"}
+	d.ChunkSize = 5
+	got := d.chunks(12)
+	chunks := []chunk{{0, 4}, {5, 9}, {10, 11}}
+	sizes := []uint64{5, 5, 2}
+	headers := []string{"bytes=0-4", "bytes=5-9", "bytes=10-11"}
 	if len(got) != len(chunks) {
 		t.Errorf("expected %d chunks, got %d", len(chunks), len(got))
 	}
