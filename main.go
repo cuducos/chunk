@@ -133,7 +133,7 @@ func (d *Downloader) downloadFileWithTimeout(userCtx context.Context, u string) 
 	}
 }
 
-func (d *Downloader) getContentSizeHeader(ctx context.Context, u string) (uint64, error) {
+func (d *Downloader) getSize(ctx context.Context, u string) (uint64, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, u, nil)
 	if err != nil {
 		return 0, fmt.Errorf("error creating the request for %s: %w", u, err)
@@ -142,8 +142,14 @@ func (d *Downloader) getContentSizeHeader(ctx context.Context, u string) (uint64
 	if err != nil {
 		return 0, fmt.Errorf("error sending a get http request to %s: %w", u, err)
 	}
+	if resp.StatusCode != 200 {
+		return 0, fmt.Errorf("status code is not valid: %v", resp.StatusCode)
+	}
 	defer resp.Body.Close()
-	return uint64(resp.ContentLength), nil
+	if resp.ContentLength != 0 && resp.ContentLength != -1 {
+		return uint64(resp.ContentLength), nil
+	}
+	return 0, nil
 }
 
 func (d *Downloader) downloadFile(ctx context.Context, u string) ([]byte, error) {
@@ -192,17 +198,11 @@ func (d *Downloader) DownloadWithContext(ctx context.Context, urls ...string) <-
 				s.Error = err
 				return
 			}
-			ds, err := d.getContentSizeHeader(ctx, u)
 			if err != nil {
 				s.Error = err
 				return
 			}
 			s.DownloadedFileBytes = uint64(len(b))
-			if ds == 0 {
-				s.FileSizeBytes = uint64(len(b))
-			} else {
-				s.FileSizeBytes = ds
-			}
 		}(u)
 	}
 	go func() {
