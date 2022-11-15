@@ -144,7 +144,7 @@ func (d *Downloader) getSize(ctx context.Context, u string) (uint64, error) {
 	}
 	resp, err := d.client.Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("error sending a get http request to %s: %w", u, err)
+		return 0, fmt.Errorf("Error fetching content size -- sending get http request to %s: %w", u, err)
 	}
 	if resp.StatusCode != 200 {
 		return 0, fmt.Errorf("error fetching content size -- status code is not valid: %v", resp.StatusCode)
