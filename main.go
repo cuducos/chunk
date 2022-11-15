@@ -42,9 +42,6 @@ type DownloadStatus struct {
 	// some errors are ignored the download is retried instead of propagating
 	// the error).
 	Error error
-
-	// The total size of the download in bytes
-	DowloadedFileSize uint64
 }
 
 // IsFinished informs the user whether a download is done (successfully or
@@ -165,7 +162,7 @@ func (d *Downloader) emitContentSize(ctx context.Context, url, path string, ch c
 	s := DownloadStatus{
 		URL: url,
 		DownloadedFilePath: path,
-		DowloadedFileSize: 0,
+		DownloadedFileBytes: 0,
 	}
 	defer func() { ch <- s }()
 	ds, err := d.getSize(ctx, url)
