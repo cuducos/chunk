@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -41,6 +42,9 @@ type DownloadStatus struct {
 	// some errors are ignored the download is retried instead of propagating
 	// the error).
 	Error error
+
+	// The size of the download in bytes
+	DowloadedFileSize uint64
 }
 
 // IsFinished informs the user whether a download is done (successfully or
@@ -148,8 +152,29 @@ func (d *Downloader) getSize(ctx context.Context, u string) (uint64, error) {
 	defer resp.Body.Close()
 	if resp.ContentLength != 0 && resp.ContentLength != -1 {
 		return uint64(resp.ContentLength), nil
+	} else if resp.Header.Get("Content-Range") != "" {
+		var size uint64
+		contentRangeSplit := strings.Split(resp.Header.Get("Content-Range"), "/")
+		fmt.Sscan(contentRangeSplit[len(contentRangeSplit) -1], &size)
+		return uint64(size), nil
 	}
 	return 0, nil
+}
+
+func (d *Downloader) emitContentSize(ctx context.Context, url, path string, ch chan DownloadStatus) (err error) {                       
+	s := DownloadStatus{
+		URL: url,
+		DownloadedFilePath: path,
+		DowloadedFileSize: 0,
+	}
+	defer func() { ch <- s }()
+	ds, err := d.getSize(ctx, url)
+	if err != nil {
+		s.Error = err
+		return 
+	}
+	s.FileSizeBytes = ds
+	return nil
 }
 
 func (d *Downloader) downloadFile(ctx context.Context, u string) ([]byte, error) {
@@ -186,9 +211,12 @@ func (d *Downloader) DownloadWithContext(ctx context.Context, urls ...string) <-
 		wg.Add(1)
 		go func(u string) {
 			defer wg.Done()
-			s := DownloadStatus{URL: u}
+			path := filepath.Join(os.TempDir(), filepath.Base(u))
+			if err := d.emitContentSize(ctx, u, path, ch); err != nil {
+				return
+	  		}
+			s := DownloadStatus{URL: u, DownloadedFilePath: path}
 			defer func() { ch <- s }()
-			s.DownloadedFilePath = filepath.Join(os.TempDir(), filepath.Base(u))
 			b, err := d.downloadFile(ctx, u)
 			if err != nil {
 				s.Error = err
