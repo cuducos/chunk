@@ -43,7 +43,7 @@ type DownloadStatus struct {
 	// the error).
 	Error error
 
-	// The size of the download in bytes
+	// The total size of the download in bytes
 	DowloadedFileSize uint64
 }
 
@@ -171,7 +171,7 @@ func (d *Downloader) emitContentSize(ctx context.Context, url, path string, ch c
 	ds, err := d.getSize(ctx, url)
 	if err != nil {
 		s.Error = err
-		return 
+		return err
 	}
 	s.FileSizeBytes = ds
 	return nil
