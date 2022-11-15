@@ -147,7 +147,7 @@ func (d *Downloader) getSize(ctx context.Context, u string) (uint64, error) {
 		return 0, fmt.Errorf("error sending a get http request to %s: %w", u, err)
 	}
 	if resp.StatusCode != 200 {
-		return 0, fmt.Errorf("status code is not valid: %v", resp.StatusCode)
+		return 0, fmt.Errorf("error fetching content size -- status code is not valid: %v", resp.StatusCode)
 	}
 	defer resp.Body.Close()
 	if resp.ContentLength != 0 && resp.ContentLength != -1 {
