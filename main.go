@@ -137,14 +137,14 @@ func (d *Downloader) downloadFileWithTimeout(userCtx context.Context, u string) 
 func (d *Downloader) getSize(ctx context.Context, u string) (uint64, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, u, nil)
 	if err != nil {
-		return 0, fmt.Errorf("Error fetching content size -- creating the request for %s: %w", u, err)
+		return 0, fmt.Errorf("creating the request for %s: %w", u, err)
 	}
 	resp, err := d.client.Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("Error fetching content size -- sending get http request to %s: %w", u, err)
+		return 0, fmt.Errorf("sending get http request to %s: %w", u, err)
 	}
 	if resp.StatusCode != 200 {
-		return 0, fmt.Errorf("error fetching content size -- status code is not valid: %v", resp.StatusCode)
+		return 0, fmt.Errorf("status code for %s not valid: %s", u, resp.Status)
 	}
 	defer resp.Body.Close()
 	if resp.ContentLength != 0 && resp.ContentLength != -1 {
