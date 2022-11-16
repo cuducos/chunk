@@ -165,6 +165,7 @@ func (d *Downloader) emitContentSize(ctx context.Context, url, path string, ch c
 		DownloadedFileBytes: 0,
 	}
 	defer func() { ch <- s }()
+	// TODO: Create a retry method
 	ds, err := d.getSize(ctx, url)
 	if err != nil {
 		s.Error = err
