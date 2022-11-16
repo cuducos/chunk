@@ -143,22 +143,22 @@ func (d *Downloader) getSize(ctx context.Context, u string) (uint64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("sending get http request to %s: %w", u, err)
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		return 0, fmt.Errorf("got unexpected http response status for %s: %s", u, resp.Status)
 	}
-	defer resp.Body.Close()
-	if resp.ContentLength != 0 && resp.ContentLength != -1 {
+	if resp.ContentLength > 0 {
 		return uint64(resp.ContentLength), nil
 	} else if resp.Header.Get("Content-Range") != "" {
 		var size uint64
 		contentRangeSplit := strings.Split(resp.Header.Get("Content-Range"), "/")
 		fmt.Sscan(contentRangeSplit[len(contentRangeSplit) -1], &size)
-		return uint64(size), nil
+		return size, nil
 	}
 	return 0, nil
 }
 
-func (d *Downloader) emitContentSize(ctx context.Context, url, path string, ch chan DownloadStatus) (err error) {                       
+func (d *Downloader) emitContentSize(ctx context.Context, url, path string, ch chan DownloadStatus) error {                       
 	s := DownloadStatus{
 		URL: url,
 		DownloadedFilePath: path,
@@ -221,10 +221,6 @@ func (d *Downloader) DownloadWithContext(ctx context.Context, urls ...string) <-
 				return
 			}
 			if err := os.WriteFile(s.DownloadedFilePath, b, 0655); err != nil {
-				s.Error = err
-				return
-			}
-			if err != nil {
 				s.Error = err
 				return
 			}
