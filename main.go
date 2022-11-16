@@ -153,7 +153,7 @@ func (d *Downloader) getSize(ctx context.Context, u string) (uint64, error) {
 		var size uint64
 		contentRangeSplit := strings.Split(resp.Header.Get("Content-Range"), "/")
 		fmt.Sscan(contentRangeSplit[len(contentRangeSplit) -1], &size)
-		return uint64(size), nil
+		return size, nil
 	}
 	return 0, nil
 }
