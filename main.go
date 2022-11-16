@@ -143,10 +143,10 @@ func (d *Downloader) getSize(ctx context.Context, u string) (uint64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("sending get http request to %s: %w", u, err)
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		return 0, fmt.Errorf("got unexpected http response status for %s: %s", u, resp.Status)
 	}
-	defer resp.Body.Close()
 	if resp.ContentLength != 0 && resp.ContentLength != -1 {
 		return uint64(resp.ContentLength), nil
 	} else if resp.Header.Get("Content-Range") != "" {
