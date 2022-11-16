@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -133,6 +134,46 @@ func (d *Downloader) downloadFileWithTimeout(userCtx context.Context, u string) 
 	}
 }
 
+func (d *Downloader) getSize(ctx context.Context, u string) (uint64, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, u, nil)
+	if err != nil {
+		return 0, fmt.Errorf("creating the request for %s: %w", u, err)
+	}
+	resp, err := d.client.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("sending get http request to %s: %w", u, err)
+	}
+	if resp.StatusCode != 200 {
+		return 0, fmt.Errorf("got unexpected http response status for %s: %s", u, resp.Status)
+	}
+	defer resp.Body.Close()
+	if resp.ContentLength != 0 && resp.ContentLength != -1 {
+		return uint64(resp.ContentLength), nil
+	} else if resp.Header.Get("Content-Range") != "" {
+		var size uint64
+		contentRangeSplit := strings.Split(resp.Header.Get("Content-Range"), "/")
+		fmt.Sscan(contentRangeSplit[len(contentRangeSplit) -1], &size)
+		return uint64(size), nil
+	}
+	return 0, nil
+}
+
+func (d *Downloader) emitContentSize(ctx context.Context, url, path string, ch chan DownloadStatus) (err error) {                       
+	s := DownloadStatus{
+		URL: url,
+		DownloadedFilePath: path,
+		DownloadedFileBytes: 0,
+	}
+	defer func() { ch <- s }()
+	ds, err := d.getSize(ctx, url)
+	if err != nil {
+		s.Error = err
+		return err
+	}
+	s.FileSizeBytes = ds
+	return nil
+}
+
 func (d *Downloader) downloadFile(ctx context.Context, u string) ([]byte, error) {
 	ch := make(chan []byte, 1)
 	defer close(ch)
@@ -193,9 +234,12 @@ func (d *Downloader) DownloadWithContext(ctx context.Context, urls ...string) <-
 		wg.Add(1)
 		go func(u string) {
 			defer wg.Done()
-			s := DownloadStatus{URL: u}
+			path := filepath.Join(os.TempDir(), filepath.Base(u))
+			if err := d.emitContentSize(ctx, u, path, ch); err != nil {
+				return
+	  		}
+			s := DownloadStatus{URL: u, DownloadedFilePath: path}
 			defer func() { ch <- s }()
-			s.DownloadedFilePath = filepath.Join(os.TempDir(), filepath.Base(u))
 			b, err := d.downloadFile(ctx, u)
 			if err != nil {
 				s.Error = err
@@ -206,7 +250,6 @@ func (d *Downloader) DownloadWithContext(ctx context.Context, urls ...string) <-
 				return
 			}
 			s.DownloadedFileBytes = uint64(len(b))
-			s.FileSizeBytes = uint64(len(b))
 		}(u)
 	}
 	go func() {
