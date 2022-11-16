@@ -225,7 +225,7 @@ func (d *Downloader) DownloadWithContext(ctx context.Context, urls ...string) <-
 				return
 			}
 			s.FileSizeBytes = t
-            ch <- s // send total file size to the user
+			ch <- s // send total file size to the user
 			b, err := d.downloadFile(ctx, u)
 			if err != nil {
 				s.Error = err
