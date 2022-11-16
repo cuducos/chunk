@@ -158,7 +158,7 @@ func (d *Downloader) getSize(ctx context.Context, u string) (uint64, error) {
 	return 0, nil
 }
 
-func (d *Downloader) emitContentSize(ctx context.Context, url, path string, ch chan DownloadStatus) (err error) {                       
+func (d *Downloader) emitContentSize(ctx context.Context, url, path string, ch chan DownloadStatus) error {                       
 	s := DownloadStatus{
 		URL: url,
 		DownloadedFilePath: path,
