@@ -223,10 +223,6 @@ func (d *Downloader) DownloadWithContext(ctx context.Context, urls ...string) <-
 				s.Error = err
 				return
 			}
-			if err != nil {
-				s.Error = err
-				return
-			}
 			s.DownloadedFileBytes = uint64(len(b))
 		}(u)
 	}
