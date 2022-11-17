@@ -24,6 +24,9 @@ func TestDownload_Error(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			s := httptest.NewServer(http.HandlerFunc(
 				func(w http.ResponseWriter, r *http.Request) {
+					if r.Method == http.MethodHead {
+						return
+					}
 					tc.proc(w)
 				},
 			))
@@ -36,11 +39,12 @@ func TestDownload_Error(t *testing.T) {
 				WaitBetweenRetries:            0 * time.Second,
 			}
 			ch := d.Download(s.URL)
-			status := <-ch
-			if status.Error == nil {
+			<-ch // discard the first got (just the file size)
+			got := <-ch
+			if got.Error == nil {
 				t.Error("expected an error, but got nil")
 			}
-			if !strings.Contains(status.Error.Error(), "#4") {
+			if !strings.Contains(got.Error.Error(), "#4") {
 				t.Error("expected #4 (configured number of retries), but did not get it")
 			}
 			if _, ok := <-ch; ok {
@@ -59,6 +63,7 @@ func TestDownload_OkWithDefaultDownloader(t *testing.T) {
 	defer s.Close()
 
 	ch := DefaultDownloader().Download(s.URL)
+	<-ch // discard the first status (just the file size)
 	got := <-ch
 	defer os.Remove(got.DownloadedFilePath)
 
@@ -99,6 +104,10 @@ func TestDownload_Retry(t *testing.T) {
 			attempts := int32(0)
 			s := httptest.NewServer(http.HandlerFunc(
 				func(w http.ResponseWriter, r *http.Request) {
+					if r.Method == http.MethodHead {
+						w.Header().Add("Content-Length", "2")
+						return
+					}
 					if atomic.CompareAndSwapInt32(&attempts, 0, 1) {
 						tc.proc(w)
 					}
@@ -115,6 +124,7 @@ func TestDownload_Retry(t *testing.T) {
 				WaitBetweenRetries:            0 * time.Second,
 			}
 			ch := d.Download(s.URL)
+			<-ch // discard the first status (just the file size)
 			got := <-ch
 			if got.Error != nil {
 				t.Errorf("invalid error. want:nil got:%q", got.Error)
@@ -150,6 +160,9 @@ func TestDownloadWithContext_ErrorUserTimeout(t *testing.T) {
 	timeout := 10 * userTimeout
 	s := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodHead {
+				return
+			}
 			time.Sleep(2 * userTimeout) // this time is greater than the user timeout, but shorter than the timeout per chunk.
 		},
 	))
@@ -165,14 +178,43 @@ func TestDownloadWithContext_ErrorUserTimeout(t *testing.T) {
 	defer cancFunc()
 
 	ch := d.DownloadWithContext(userCtx, s.URL)
-	status := <-ch
-	if status.Error == nil {
+	<-ch // discard the first got (just the file size)
+	got := <-ch
+	if got.Error == nil {
 		t.Error("expected an error, but got nil")
 	}
-	if !strings.Contains(status.Error.Error(), "#4") {
+	if !strings.Contains(got.Error.Error(), "#4") {
 		t.Error("expected #4 (configured number of retries), but did not get it")
 	}
 	if _, ok := <-ch; ok {
 		t.Error("expected channel closed, but did not get it")
 	}
 }
+
+func TestDownload_Chunks(t *testing.T) {
+	d := DefaultDownloader()
+	d.ChunkSize = 5
+	got := d.chunks(12)
+	chunks := []chunk{{0, 4}, {5, 9}, {10, 11}}
+	sizes := []uint64{5, 5, 2}
+	headers := []string{"bytes=0-4", "bytes=5-9", "bytes=10-11"}
+	if len(got) != len(chunks) {
+		t.Errorf("expected %d chunks, got %d", len(chunks), len(got))
+	}
+	for i := range got {
+		if got[i].start != chunks[i].start {
+			t.Errorf("expected chunk #%d to start at %d, got %d", i+1, chunks[i].start, got[i].start)
+		}
+		if got[i].end != chunks[i].end {
+			t.Errorf("expected chunk #%d to end at %d, got %d", i+1, chunks[i].end, got[i].end)
+		}
+		if got[i].size() != sizes[i] {
+			t.Errorf("expected chunk #%d to have size %d, got %d", i+1, sizes[i], got[i].size())
+		}
+		if got[i].rangeHeader() != headers[i] {
+			t.Errorf("expected chunk #%d header to be %s, got %s", i+1, headers[i], got[i].rangeHeader())
+		}
+	}
+}
+
+// TODO: add tests for getDownloadSize (success with Content-Length, success with Content-Range, failure)
