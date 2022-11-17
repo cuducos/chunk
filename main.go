@@ -87,17 +87,27 @@ type Downloader struct {
 	WaitBetweenRetries time.Duration
 }
 
-func (d *Downloader) downloadFileWithContext(ctx context.Context, u string) ([]byte, error) {
+type chunk struct {
+	start int64
+	end   int64
+}
+
+func (c chunk) size() int64         { return (c.end + 1) - c.start }
+func (c chunk) rangeHeader() string { return fmt.Sprintf("bytes=%d-%d", c.start, c.end) }
+func (c chunk) last() bool          { return c.end+1 == c.size() }
+
+func (d *Downloader) downloadChunkWithContext(ctx context.Context, u string, c chunk) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating the request for %s: %w", u, err)
 	}
+	req.Header.Set("Range", c.rangeHeader())
 	resp, err := d.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error sending a get http request to %s: %w", u, err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("got http response %s from %s: %w", resp.Status, u, err)
 	}
 	var b bytes.Buffer
@@ -108,13 +118,13 @@ func (d *Downloader) downloadFileWithContext(ctx context.Context, u string) ([]b
 	return b.Bytes(), nil
 }
 
-func (d *Downloader) downloadFileWithTimeout(userCtx context.Context, u string) ([]byte, error) {
+func (d *Downloader) downloadChunkWithTimeout(userCtx context.Context, u string, c chunk) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(userCtx, d.TimeoutPerChunk) // need to propagate context, which might contain app-specific data.
 	defer cancel()
 	ch := make(chan []byte)
 	errs := make(chan error)
 	go func() {
-		b, err := d.downloadFileWithContext(ctx, u)
+		b, err := d.downloadChunkWithContext(ctx, u, c)
 		if err != nil {
 			errs <- err
 			return
@@ -174,12 +184,12 @@ func (d *Downloader) getDownloadSize(ctx context.Context, u string) (int64, erro
 	return resp.ContentLength, nil
 }
 
-func (d *Downloader) downloadFile(ctx context.Context, u string) ([]byte, error) {
+func (d *Downloader) downloadChunk(ctx context.Context, u string, c chunk) ([]byte, error) {
 	ch := make(chan []byte, 1)
 	defer close(ch)
 	err := retry.Do(
 		func() error {
-			b, err := d.downloadFileWithTimeout(ctx, u)
+			b, err := d.downloadChunkWithTimeout(ctx, u, c)
 			if err != nil {
 				return err
 			}
@@ -195,14 +205,6 @@ func (d *Downloader) downloadFile(ctx context.Context, u string) ([]byte, error)
 	b := <-ch
 	return b, nil
 }
-
-type chunk struct {
-	start int64
-	end   int64
-}
-
-func (c chunk) size() int64         { return (c.end + 1) - c.start }
-func (c chunk) rangeHeader() string { return fmt.Sprintf("bytes=%d-%d", c.start, c.end) }
 
 func (d *Downloader) chunks(t int64) []chunk {
 	var start int64
@@ -222,6 +224,52 @@ func (d *Downloader) chunks(t int64) []chunk {
 	return c
 }
 
+func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, wg *sync.WaitGroup, ch chan<- DownloadStatus) {
+	defer wg.Done()
+	path := filepath.Join(os.TempDir(), filepath.Base(url))
+	s := DownloadStatus{URL: url, DownloadedFilePath: path}
+	t, err := d.getDownloadSize(ctx, url)
+	if err != nil {
+		s.Error = fmt.Errorf("error getting file size: %w", err)
+		ch <- s
+		return
+	}
+	s.FileSizeBytes = t
+	ch <- s // send total file size to the user
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		s.Error = fmt.Errorf("error creating %s: %w", path, err)
+		ch <- s
+		return
+	}
+	defer f.Close()
+	if err := f.Truncate(int64(t)); err != nil {
+		s.Error = fmt.Errorf("error truncating %s to %d: %w", path, t, err)
+		ch <- s
+		return
+	}
+	for _, c := range d.chunks(t) {
+		b, err := d.downloadChunk(ctx, url, c)
+		if err != nil {
+			s.Error = err
+			ch <- s
+			return
+		}
+		_, err = f.WriteAt(b, int64(c.start))
+		if err != nil {
+			s.Error = fmt.Errorf("error writing to %s: %w", path, err)
+			ch <- s
+			return
+		}
+		a := int64(len(b))
+		if !c.last() {
+			a -= 1 // adjust for extra EOF bytes
+		}
+		s.DownloadedFileBytes += a
+		ch <- s
+	}
+}
+
 // DownloadWithContext is a version of Download that takes a context. The
 // context can be used to stop all downloads in progress.
 func (d *Downloader) DownloadWithContext(ctx context.Context, urls ...string) <-chan DownloadStatus {
@@ -232,29 +280,7 @@ func (d *Downloader) DownloadWithContext(ctx context.Context, urls ...string) <-
 	var wg sync.WaitGroup
 	for _, u := range urls {
 		wg.Add(1)
-		go func(u string) {
-			defer wg.Done()
-			path := filepath.Join(os.TempDir(), filepath.Base(u))
-			s := DownloadStatus{URL: u, DownloadedFilePath: path}
-			defer func() { ch <- s }()
-			t, err := d.getDownloadSize(ctx, u)
-			if err != nil {
-				s.Error = fmt.Errorf("error getting file size: %w", err)
-				return
-			}
-			s.FileSizeBytes = t
-			ch <- s // send total file size to the user
-			b, err := d.downloadFile(ctx, u)
-			if err != nil {
-				s.Error = err
-				return
-			}
-			if err := os.WriteFile(s.DownloadedFilePath, b, 0655); err != nil {
-				s.Error = err
-				return
-			}
-			s.DownloadedFileBytes = int64(len(b))
-		}(u)
+		go d.prepareAndStartDownload(ctx, u, &wg, ch)
 	}
 	go func() {
 		wg.Wait()

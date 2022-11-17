@@ -58,6 +58,10 @@ func TestDownload_Error(t *testing.T) {
 func TestDownload_OkWithDefaultDownloader(t *testing.T) {
 	s := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodHead {
+				w.Header().Add("Content-Length", "2")
+				return
+			}
 			fmt.Fprint(w, "42")
 		},
 	))
