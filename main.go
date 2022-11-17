@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -133,6 +134,28 @@ func (d *Downloader) downloadFileWithTimeout(userCtx context.Context, u string) 
 	}
 }
 
+func (d *Downloader) getDownloadSize(ctx context.Context, u string) (uint64, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, u, nil)
+	if err != nil {
+		return 0, fmt.Errorf("creating the request for %s: %w", u, err)
+	}
+	resp, err := d.client.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("sending get http request to %s: %w", u, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return 0, fmt.Errorf("got unexpected http response status for %s: %s", u, resp.Status)
+	}
+	if resp.ContentLength <= 0 && resp.Header.Get("Content-Range") != "" {
+		var s uint64
+		p := strings.Split(resp.Header.Get("Content-Range"), "/")
+		fmt.Sscan(p[len(p)-1], &s)
+		return s, nil
+	}
+	return uint64(resp.ContentLength), nil
+}
+
 func (d *Downloader) downloadFile(ctx context.Context, u string) ([]byte, error) {
 	ch := make(chan []byte, 1)
 	defer close(ch)
@@ -193,9 +216,16 @@ func (d *Downloader) DownloadWithContext(ctx context.Context, urls ...string) <-
 		wg.Add(1)
 		go func(u string) {
 			defer wg.Done()
-			s := DownloadStatus{URL: u}
+			path := filepath.Join(os.TempDir(), filepath.Base(u))
+			s := DownloadStatus{URL: u, DownloadedFilePath: path}
 			defer func() { ch <- s }()
-			s.DownloadedFilePath = filepath.Join(os.TempDir(), filepath.Base(u))
+			t, err := d.getDownloadSize(ctx, u) // TODO: retry
+			if err != nil {
+				s.Error = fmt.Errorf("error getting file size: %w", err)
+				return
+			}
+			s.FileSizeBytes = t
+			ch <- s // send total file size to the user
 			b, err := d.downloadFile(ctx, u)
 			if err != nil {
 				s.Error = err
@@ -206,7 +236,6 @@ func (d *Downloader) DownloadWithContext(ctx context.Context, urls ...string) <-
 				return
 			}
 			s.DownloadedFileBytes = uint64(len(b))
-			s.FileSizeBytes = uint64(len(b))
 		}(u)
 	}
 	go func() {
