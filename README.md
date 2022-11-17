@@ -68,7 +68,7 @@ With all this information, show a progress bar with the total work remaining.
 The prototype is a CLI that wraps a GET HTTP request in a 45s timeout independent of the HTTP client's timeout. It also includes 3 retries by default.
 
 ```console
-$ go run main.go <URL> # e.g. go run main.go https://github.com/cuducos/chunk
+$ go run main.go <URL> # e.g. go run main.go https://github.com/cuducos/chunk/archive/refs/heads/main.zip
 ```
 
 The API should work like this:
