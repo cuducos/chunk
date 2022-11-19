@@ -25,6 +25,7 @@ func TestDownload_Error(t *testing.T) {
 			s := httptest.NewServer(http.HandlerFunc(
 				func(w http.ResponseWriter, r *http.Request) {
 					if r.Method == http.MethodHead {
+						w.Header().Add("Content-Length", "2")
 						return
 					}
 					tc.proc(w)
@@ -161,6 +162,7 @@ func TestDownloadWithContext_ErrorUserTimeout(t *testing.T) {
 	s := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodHead {
+				w.Header().Add("Content-Length", "2")
 				return
 			}
 			time.Sleep(2 * userTimeout) // this time is greater than the user timeout, but shorter than the timeout per chunk.
@@ -196,7 +198,7 @@ func TestDownload_Chunks(t *testing.T) {
 	d.ChunkSize = 5
 	got := d.chunks(12)
 	chunks := []chunk{{0, 4}, {5, 9}, {10, 11}}
-	sizes := []uint64{5, 5, 2}
+	sizes := []int64{5, 5, 2}
 	headers := []string{"bytes=0-4", "bytes=5-9", "bytes=10-11"}
 	if len(got) != len(chunks) {
 		t.Errorf("expected %d chunks, got %d", len(chunks), len(got))
@@ -226,6 +228,33 @@ func TestGetDownloadSize_ContentLength(t *testing.T) {
 	defer s.Close()
 
 	d := DefaultDownloader()
+	got, err := d.getDownloadSize(context.Background(), s.URL)
+
+	if err != nil {
+		t.Errorf("expected no error getting the file size, got %s", err)
+	}
+	if got != 4 {
+		t.Errorf("invalid size, expected 4, got: %d", got)
+	}
+}
+
+func TestGetDownloadSize_WithRetry(t *testing.T) {
+	attempts := int32(0)
+	s := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			fmt.Printf("attempts = %d\n", atomic.LoadInt32(&attempts)) // TODO: remove
+			if atomic.CompareAndSwapInt32(&attempts, 0, 1) {
+				w.WriteHeader(http.StatusTooManyRequests)
+				return
+			}
+			fmt.Fprint(w, "Test")
+		},
+	))
+	defer s.Close()
+
+	d := DefaultDownloader()
+	fmt.Printf("d.MaxRetriesPerChunk = %d\n", d.MaxRetriesPerChunk) // TODO: remove
+	fmt.Printf("d.WaitBetweenRetries = %v\n", d.WaitBetweenRetries) // TODO: remove
 	got, err := d.getDownloadSize(context.Background(), s.URL)
 
 	if err != nil {
@@ -277,12 +306,7 @@ func TestGetDownloadSize_NoContent(t *testing.T) {
 	defer s.Close()
 
 	d := DefaultDownloader()
-	got, err := d.getDownloadSize(context.Background(), s.URL)
-
-	if err != nil {
-		t.Errorf("expected no error getting the file size, got %s", err)
-	}
-	if got != 0 {
-		t.Errorf("invalid size, expected 0, got: %d", got)
+	if _, err := d.getDownloadSize(context.Background(), s.URL); err == nil {
+		t.Error("expected error getting the file size, got nil")
 	}
 }
