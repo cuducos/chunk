@@ -238,6 +238,33 @@ func TestGetDownloadSize_ContentLength(t *testing.T) {
 	}
 }
 
+func TestGetDownloadSize_WithRetry(t *testing.T) {
+	attempts := int32(0)
+	s := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			fmt.Printf("attempts = %d\n", atomic.LoadInt32(&attempts)) // TODO: remove
+			if atomic.CompareAndSwapInt32(&attempts, 0, 1) {
+				w.WriteHeader(http.StatusTooManyRequests)
+				return
+			}
+			fmt.Fprint(w, "Test")
+		},
+	))
+	defer s.Close()
+
+	d := DefaultDownloader()
+	fmt.Printf("d.MaxRetriesPerChunk = %d\n", d.MaxRetriesPerChunk) // TODO: remove
+	fmt.Printf("d.WaitBetweenRetries = %v\n", d.WaitBetweenRetries) // TODO: remove
+	got, err := d.getDownloadSize(context.Background(), s.URL)
+
+	if err != nil {
+		t.Errorf("expected no error getting the file size, got %s", err)
+	}
+	if got != 4 {
+		t.Errorf("invalid size, expected 4, got: %d", got)
+	}
+}
+
 func TestGetDownloadSize_ContentRange(t *testing.T) {
 	s := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {

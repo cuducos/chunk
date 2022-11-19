@@ -139,14 +139,28 @@ func (d *Downloader) getDownloadSize(ctx context.Context, u string) (int64, erro
 	if err != nil {
 		return 0, fmt.Errorf("creating the request for %s: %w", u, err)
 	}
-	resp, err := d.client.Do(req)
+	ch := make(chan *http.Response, 1)
+	defer close(ch)
+	err = retry.Do(
+		func() error {
+			resp, err := d.client.Do(req)
+			if err != nil {
+				return err
+			}
+			if resp.StatusCode != 200 {
+				return fmt.Errorf("got unexpected http response status for %s: %s", u, resp.Status)
+			}
+			ch <- resp
+			return nil
+		},
+		retry.Attempts(d.MaxParallelDownloadsPerServer),
+		retry.MaxDelay(d.WaitBetweenRetries),
+	)
 	if err != nil {
-		return 0, fmt.Errorf("sending get http request to %s: %w", u, err)
+		return 0, fmt.Errorf("error sending get http request to %s: %w", u, err)
 	}
+	resp := <-ch
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return 0, fmt.Errorf("got unexpected http response status for %s: %s", u, resp.Status)
-	}
 	if resp.ContentLength <= 0 {
 		var s int64
 		r := strings.TrimSpace(resp.Header.Get("Content-Range"))
@@ -223,7 +237,7 @@ func (d *Downloader) DownloadWithContext(ctx context.Context, urls ...string) <-
 			path := filepath.Join(os.TempDir(), filepath.Base(u))
 			s := DownloadStatus{URL: u, DownloadedFilePath: path}
 			defer func() { ch <- s }()
-			t, err := d.getDownloadSize(ctx, u) // TODO: retry
+			t, err := d.getDownloadSize(ctx, u)
 			if err != nil {
 				s.Error = fmt.Errorf("error getting file size: %w", err)
 				return
