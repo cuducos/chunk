@@ -19,7 +19,7 @@ type progress struct {
 	// download fields so the encoder/decoder has access to them
 	URL       string
 	Path      string
-	ChunkSize uint64
+	ChunkSize int64
 	Chunks    []uint32
 }
 
@@ -123,7 +123,7 @@ func (p *progress) close() error {
 	return nil // Either not empty or error, suits both cases
 }
 
-func newProgress(path, url string, chunkSize uint64, chunks int, restart bool) (*progress, error) {
+func newProgress(path, url string, chunkSize int64, chunks int, restart bool) (*progress, error) {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return nil, fmt.Errorf("error getting absolute path for %s: %w", path, err)

@@ -33,10 +33,10 @@ type DownloadStatus struct {
 	DownloadedFilePath string
 
 	// FileSizeBytes is the total size of the file as informed by the server
-	FileSizeBytes uint64
+	FileSizeBytes int64
 
 	// DownloadedFileBytes already downloaded from this URL
-	DownloadedFileBytes uint64
+	DownloadedFileBytes int64
 
 	// Any non-recoerable error captured during the download (this means that
 	// some errors are ignored the download is retried instead of propagating
@@ -80,7 +80,7 @@ type Downloader struct {
 	// content range header. There is no way to specify how many chunks a
 	// download will need, the focus is on slicing it in smaller chunks so slow
 	// and unstable servers can respond before dropping it.
-	ChunkSize uint64
+	ChunkSize int64
 
 	// WaitBetweenRetries is an optional pause before retrying an HTTP request
 	// that has failed.
@@ -134,7 +134,7 @@ func (d *Downloader) downloadFileWithTimeout(userCtx context.Context, u string) 
 	}
 }
 
-func (d *Downloader) getDownloadSize(ctx context.Context, u string) (uint64, error) {
+func (d *Downloader) getDownloadSize(ctx context.Context, u string) (int64, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, u, nil)
 	if err != nil {
 		return 0, fmt.Errorf("creating the request for %s: %w", u, err)
@@ -152,12 +152,12 @@ func (d *Downloader) getDownloadSize(ctx context.Context, u string) (uint64, err
 			// TODO: find a way to throw an error on no-content with keeping the tests run as usual
 			return 0, nil
 		}
-		var s uint64
+		var s int64
 		p := strings.Split(resp.Header.Get("Content-Range"), "/")
 		fmt.Sscan(p[len(p)-1], &s)
 		return s, nil
 	}
-	return uint64(resp.ContentLength), nil
+	return resp.ContentLength, nil
 }
 
 func (d *Downloader) downloadFile(ctx context.Context, u string) ([]byte, error) {
@@ -183,15 +183,15 @@ func (d *Downloader) downloadFile(ctx context.Context, u string) ([]byte, error)
 }
 
 type chunk struct {
-	start uint64
-	end   uint64
+	start int64
+	end   int64
 }
 
-func (c chunk) size() uint64        { return (c.end + 1) - c.start }
+func (c chunk) size() int64         { return (c.end + 1) - c.start }
 func (c chunk) rangeHeader() string { return fmt.Sprintf("bytes=%d-%d", c.start, c.end) }
 
-func (d *Downloader) chunks(t uint64) []chunk {
-	var start uint64
+func (d *Downloader) chunks(t int64) []chunk {
+	var start int64
 	last := t - 1
 	var c []chunk
 	for {
@@ -239,7 +239,7 @@ func (d *Downloader) DownloadWithContext(ctx context.Context, urls ...string) <-
 				s.Error = err
 				return
 			}
-			s.DownloadedFileBytes = uint64(len(b))
+			s.DownloadedFileBytes = int64(len(b))
 		}(u)
 	}
 	go func() {

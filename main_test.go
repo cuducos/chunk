@@ -196,7 +196,7 @@ func TestDownload_Chunks(t *testing.T) {
 	d.ChunkSize = 5
 	got := d.chunks(12)
 	chunks := []chunk{{0, 4}, {5, 9}, {10, 11}}
-	sizes := []uint64{5, 5, 2}
+	sizes := []int64{5, 5, 2}
 	headers := []string{"bytes=0-4", "bytes=5-9", "bytes=10-11"}
 	if len(got) != len(chunks) {
 		t.Errorf("expected %d chunks, got %d", len(chunks), len(got))
