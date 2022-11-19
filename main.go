@@ -94,7 +94,6 @@ type chunk struct {
 
 func (c chunk) size() int64         { return (c.end + 1) - c.start }
 func (c chunk) rangeHeader() string { return fmt.Sprintf("bytes=%d-%d", c.start, c.end) }
-func (c chunk) last() bool          { return c.end+1 == c.size() }
 
 func (d *Downloader) downloadChunkWithContext(ctx context.Context, u string, c chunk) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
@@ -261,11 +260,7 @@ func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, wg
 			ch <- s
 			return
 		}
-		a := int64(len(b))
-		if !c.last() {
-			a -= 1 // adjust for extra EOF bytes
-		}
-		s.DownloadedFileBytes += a
+		s.DownloadedFileBytes += int64(len(b))
 		ch <- s
 	}
 }
