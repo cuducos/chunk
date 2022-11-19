@@ -148,12 +148,12 @@ func (d *Downloader) getDownloadSize(ctx context.Context, u string) (int64, erro
 		return 0, fmt.Errorf("got unexpected http response status for %s: %s", u, resp.Status)
 	}
 	if resp.ContentLength <= 0 {
-		if resp.Header.Get("Content-Range") == "" {
-			// TODO: find a way to throw an error on no-content with keeping the tests run as usual
-			return 0, nil
-		}
 		var s int64
-		p := strings.Split(resp.Header.Get("Content-Range"), "/")
+		r := strings.TrimSpace(resp.Header.Get("Content-Range"))
+		if r == "" {
+			return 0, fmt.Errorf("could not get content length for %s", u)
+		}
+		p := strings.Split(r, "/")
 		fmt.Sscan(p[len(p)-1], &s)
 		return s, nil
 	}

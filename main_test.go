@@ -25,6 +25,7 @@ func TestDownload_Error(t *testing.T) {
 			s := httptest.NewServer(http.HandlerFunc(
 				func(w http.ResponseWriter, r *http.Request) {
 					if r.Method == http.MethodHead {
+						w.Header().Add("Content-Length", "2")
 						return
 					}
 					tc.proc(w)
@@ -161,6 +162,7 @@ func TestDownloadWithContext_ErrorUserTimeout(t *testing.T) {
 	s := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodHead {
+				w.Header().Add("Content-Length", "2")
 				return
 			}
 			time.Sleep(2 * userTimeout) // this time is greater than the user timeout, but shorter than the timeout per chunk.
@@ -277,12 +279,7 @@ func TestGetDownloadSize_NoContent(t *testing.T) {
 	defer s.Close()
 
 	d := DefaultDownloader()
-	got, err := d.getDownloadSize(context.Background(), s.URL)
-
-	if err != nil {
-		t.Errorf("expected no error getting the file size, got %s", err)
-	}
-	if got != 0 {
-		t.Errorf("invalid size, expected 0, got: %d", got)
+	if _, err := d.getDownloadSize(context.Background(), s.URL); err == nil {
+		t.Error("expected error getting the file size, got nil")
 	}
 }
