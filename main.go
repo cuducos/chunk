@@ -306,14 +306,13 @@ func DefaultDownloader() *Downloader {
 }
 
 func main() {
-	d := DefaultDownloader()
-	for s := range d.Download(os.Args[1:len(os.Args)]...) {
-		if s.Error != nil {
-			log.Fatal(s.Error)
+	chunk := DefaultDownloader()
+	prog := NewProgress()
+	for status := range chunk.Download(os.Args[1:len(os.Args)]...) {
+		if status.Error != nil {
+			log.Fatal(status.Error)
 		}
-		if s.IsFinished() {
-			log.Printf("Downloaded %s (%d bytes) to %s (%d bytes).", s.URL, s.FileSizeBytes, s.DownloadedFilePath, s.DownloadedFileBytes)
-		}
+		prog.update(status)
 	}
-	log.Println("All download(s) finished successfully.")
+	fmt.Printf("\r%s\nDownloaded to: %s", prog.String(), os.TempDir())
 }
