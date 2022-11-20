@@ -1,6 +1,12 @@
 # Chunk
 
-`chunk` is a sort of download manager written in pure Go. The idea of the project emerged as it was difficult for [Minha Receita](https://github.com/cuducos/minha-receita) to handle the download of [37 files that adds up to just approx. 5Gb](https://www.gov.br/receitafederal/pt-br/assuntos/orientacao-tributaria/cadastros/consultas/dados-publicos-cnpj). Most of the download solutions out there (e.g. [`got`](https://github.com/melbahja/got)) seem to be prepared for downloading large files, not for downloading from slow and unstable servers — which is the case at hand.
+[![Tests](https://github.com/cuducos/chunk/actions/workflows/tests.yaml/badge.svg)](https://github.com/cuducos/chunk/actions/workflows/tests.yaml)
+[![Format](https://github.com/cuducos/chunk/actions/workflows/gofmt.yaml/badge.svg)](https://github.com/cuducos/chunk/actions/workflows/gofmt.yaml)
+[![Lint](https://github.com/cuducos/chunk/actions/workflows/golint.yaml/badge.svg)](https://github.com/cuducos/chunk/actions/workflows/golint.yaml)
+
+Chunk a download tool for slow and unstable servers.
+
+The idea of the project emerged as it was difficult for [Minha Receita](https://github.com/cuducos/minha-receita) to handle the download of [37 files that adds up to just approx. 5Gb](https://www.gov.br/receitafederal/pt-br/assuntos/orientacao-tributaria/cadastros/consultas/dados-publicos-cnpj). Most of the download solutions out there (e.g. [`got`](https://github.com/melbahja/got)) seem to be prepared for downloading large files, not for downloading from slow and unstable servers — which is the case at hand.
 
 ## Main fetaures
 
