@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/cuducos/chunk"
 )
 
 func humanSize(s float64) string {
@@ -43,7 +45,11 @@ func (p *downloadProgress) done() (d int64) {
 }
 
 func (p *downloadProgress) String() string {
-	perc := float64(p.done()) / float64(p.total())
+	total := float64(p.total())
+	perc := 0.0
+	if total > 0 {
+		perc = float64(p.done()) / total
+	}
 	speed := float64(p.done()) / time.Since(p.startedAt).Seconds()
 	return fmt.Sprintf(
 		"Downloading %s of %s\t%.2f%%\t%s/s",
@@ -54,14 +60,14 @@ func (p *downloadProgress) String() string {
 	)
 }
 
-func (p *downloadProgress) update(d DownloadStatus) {
+func (p *downloadProgress) update(d chunk.DownloadStatus) {
 	p.files[d.DownloadedFilePath] = file{d.FileSizeBytes, d.DownloadedFileBytes}
 	if p.done() == p.total() {
 		p.close()
 	}
 }
 
-func NewProgress() *downloadProgress {
+func newProgress() *downloadProgress {
 	ctx, cancel := context.WithCancel(context.Background())
 	bar := downloadProgress{make(map[string]file), time.Now(), cancel}
 	tick := time.Tick(1 * time.Second)
