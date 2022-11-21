@@ -161,7 +161,7 @@ func (d *Downloader) getDownloadSize(ctx context.Context, u string) (int64, erro
 			ch <- resp
 			return nil
 		},
-		retry.Attempts(d.MaxParallelDownloadsPerServer),
+		retry.Attempts(d.MaxRetriesPerChunk),
 		retry.MaxDelay(d.WaitBetweenRetries),
 	)
 	if err != nil {
