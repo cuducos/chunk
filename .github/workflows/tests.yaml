@@ -3,9 +3,9 @@ on: [push, pull_request]
 jobs:
   test:
     fail-fast: false
-      matrix:
-        os: ["windows-latest", "ubuntu-latest", "macOS-latest"]
-        go: ["1.18.x", "1.19.x"]
+    matrix:
+      os: ["windows-latest", "ubuntu-latest", "macOS-latest"]
+      go: ["1.18.x", "1.19.x"]
     runs-on: ${{ matrix.os }}
 
     steps:
