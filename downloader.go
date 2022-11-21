@@ -1,10 +1,9 @@
-package main
+package chunk
 
 import (
 	"bytes"
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -303,16 +302,4 @@ func DefaultDownloader() *Downloader {
 	d.client = &http.Client{Timeout: d.TimeoutPerChunk}
 
 	return &d
-}
-
-func main() {
-	chunk := DefaultDownloader()
-	prog := NewProgress()
-	for status := range chunk.Download(os.Args[1:len(os.Args)]...) {
-		if status.Error != nil {
-			log.Fatal(status.Error)
-		}
-		prog.update(status)
-	}
-	fmt.Printf("\r%s\nDownloaded to: %s", prog.String(), os.TempDir())
 }
