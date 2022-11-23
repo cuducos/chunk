@@ -16,7 +16,7 @@ import (
 
 const (
 	DefaultTimeoutPerChunk               = 90 * time.Second
-	DefaultMaxParallelDownloadsPerServer = 100
+	DefaultMaxParallelDownloadsPerServer = 8
 	DefaultMaxRetriesPerChunk            = 5
 	DefaultChunkSize                     = 8192
 	DefaultWaitBetweenRetries            = 0 * time.Minute
