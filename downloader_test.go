@@ -1,11 +1,16 @@
 package chunk
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -93,6 +98,71 @@ func TestDownload_OkWithDefaultDownloader(t *testing.T) {
 	}
 	if _, ok := <-ch; ok {
 		t.Error("expected channel closed, but did not get it")
+	}
+}
+
+func TestDownload_ZIPArchive(t *testing.T) {
+	tmp := t.TempDir()
+	pth := filepath.Join(tmp, "archive.zip")
+	expected := make([]byte, 1_000_000)
+	for i := 0; i < 1_000_000; i++ {
+		expected[i] = byte(97 + rand.Intn(122-97))
+	}
+
+	// create a zip archive
+	func() {
+		z, err := os.Create(pth)
+		if err != nil {
+			t.Errorf("expected no error creating zip archive, got %s", err)
+		}
+		defer z.Close()
+		w := zip.NewWriter(z)
+		f, err := w.Create("file.txt")
+		if err != nil {
+			t.Errorf("expected no error creating archived file, got %s", err)
+		}
+		defer w.Close()
+		if _, err := f.Write(expected); err != nil {
+			t.Errorf("expected no error writing to archived file, got %s", err)
+		}
+	}()
+
+	// create a server to serve the zip archive
+	s := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			http.ServeFile(w, r, pth)
+		},
+	))
+	defer s.Close()
+
+	// download
+	var got string
+	defer os.Remove(got)
+	for g := range DefaultDownloader().Download(s.URL + "/archive.zip") {
+		fmt.Println(g)
+		got = g.DownloadedFilePath
+		if g.Error != nil {
+			t.Errorf("expected no error during the download of the zip archive, got %s", g.Error)
+		}
+	}
+
+	// unarchive and check contents
+	a, err := zip.OpenReader(got)
+	if err != nil {
+		t.Errorf("expected no error opening downloaded zip archive %s, got %s", got, err)
+	}
+	defer a.Close()
+	r, err := a.Open("file.txt")
+	if err != nil {
+		t.Errorf("expected no error reading downloaded zip archive, got %s", err)
+	}
+	defer r.Close()
+	var b bytes.Buffer
+	if _, err := io.Copy(&b, r); err != nil {
+		t.Errorf("expected no error reading archived file, got %s", err)
+	}
+	if !bytes.Equal(expected, b.Bytes()) {
+		t.Error("archived contents differ from expected") // not printing becasuse it's a lot of data
 	}
 }
 
