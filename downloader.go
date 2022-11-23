@@ -222,7 +222,7 @@ func (d *Downloader) chunks(t int64) []chunk {
 	return c
 }
 
-func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, wg *sync.WaitGroup, ch chan<- DownloadStatus) {
+func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, ch chan<- DownloadStatus) {
 	path := filepath.Join(os.TempDir(), filepath.Base(url))
 	s := DownloadStatus{URL: url, DownloadedFilePath: path}
 	t, err := d.getDownloadSize(ctx, url)
@@ -242,10 +242,13 @@ func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, wg
 	if err := f.Truncate(int64(t)); err != nil {
 		s.Error = fmt.Errorf("error truncating %s to %d: %w", path, t, err)
 		ch <- s
-		wg.Done()
 		return
 	}
 	var urlDownload sync.WaitGroup
+	defer func() {
+		urlDownload.Wait()
+		f.Close()
+	}()
 	for _, c := range d.chunks(t) {
 		urlDownload.Add(1)
 		go func(c chunk) {
@@ -266,11 +269,6 @@ func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, wg
 			ch <- s
 		}(c)
 	}
-	go func() {
-		urlDownload.Wait()
-		wg.Done()
-		f.Close()
-	}()
 }
 
 // DownloadWithContext is a version of Download that takes a context. The
@@ -283,7 +281,11 @@ func (d *Downloader) DownloadWithContext(ctx context.Context, urls ...string) <-
 	var wg sync.WaitGroup                        // this wait group is used to wait for all chunks (from all downloads) to finish.
 	for _, u := range urls {
 		wg.Add(1)
-		d.prepareAndStartDownload(ctx, u, &wg, ch)
+		go func(u string) {
+			d.prepareAndStartDownload(ctx, u, ch)
+			wg.Done()
+		}(u)
+
 	}
 	go func() {
 		wg.Wait()
