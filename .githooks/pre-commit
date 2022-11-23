@@ -1,0 +1,16 @@
+#!/bin/bash
+function checkExitCode () {
+    echo "[running] $2"
+    ($1)
+    exitCheck=$?
+    if [[ $exitCheck != 0 ]] ; then
+            echo "[FAILED] $2"
+            exit 1
+    fi
+    echo "[done] $2"
+}
+echo "####### Pre-commit hook Starting #######"
+checkExitCode 'staticcheck ./...' 'Staticcheck'
+checkExitCode 'go fmt ./...' 'Gofmt'
+checkExitCode 'go test -race ./...' 'Go test'
+echo "####### Pre-commit hook Finished #######"
