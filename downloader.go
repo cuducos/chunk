@@ -251,7 +251,7 @@ func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, ch
 	}
 	for _, c := range d.chunks(t) {
 		urlDownload.Add(1)
-		go func(c chunk) {
+		go func(c chunk, s DownloadStatus) {
 			defer urlDownload.Done()
 			b, err := d.downloadChunk(ctx, url, c)
 			if err != nil {
@@ -267,7 +267,7 @@ func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, ch
 			}
 			s.DownloadedFileBytes += int64(n)
 			ch <- s
-		}(c)
+		}(c, s)
 	}
 }
 
