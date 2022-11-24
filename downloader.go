@@ -239,16 +239,16 @@ func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, ch
 		ch <- s
 		return
 	}
-	if err := f.Truncate(int64(t)); err != nil {
-		s.Error = fmt.Errorf("error truncating %s to %d: %w", path, t, err)
-		ch <- s
-		return
-	}
 	var urlDownload sync.WaitGroup
 	defer func() {
 		urlDownload.Wait()
 		f.Close()
 	}()
+	if err := f.Truncate(int64(t)); err != nil {
+		s.Error = fmt.Errorf("error truncating %s to %d: %w", path, t, err)
+		ch <- s
+		return
+	}
 	for _, c := range d.chunks(t) {
 		urlDownload.Add(1)
 		go func(c chunk) {
@@ -259,13 +259,13 @@ func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, ch
 				ch <- s
 				return
 			}
-			_, err = f.WriteAt(b, int64(c.start))
+			n, err := f.WriteAt(b, c.start)
 			if err != nil {
 				s.Error = fmt.Errorf("error writing to %s: %w", path, err)
 				ch <- s
 				return
 			}
-			s.DownloadedFileBytes += int64(len(b))
+			s.DownloadedFileBytes += int64(n)
 			ch <- s
 		}(c)
 	}
