@@ -19,7 +19,7 @@ const (
 	DefaultMaxParallelDownloadsPerServer = 8
 	DefaultMaxRetriesPerChunk            = 5
 	DefaultChunkSize                     = 8192
-	DefaultWaitBetweenRetries            = 0 * time.Minute
+	DefaultWaitBetweenRetries            = 1 * time.Second
 )
 
 // DownloadStatus is the data propagated via the channel sent back to the user
@@ -64,11 +64,10 @@ type Downloader struct {
 	// the the download of every file).
 	TimeoutPerChunk time.Duration
 
-	// MaxParallelDownloadsPerServer controls how many requests are sent in
-	// parallel to the same server. If all the URLs are from the same server
-	// this is the total of parallel requests. If the user is downloading files
-	// from different servers (including different subdomains), this limit is
-	// applied to each server idependently.
+	// MaxParallelDownloadsPerServer controls the max number of concurrent
+	// connections opened to the same server. If all the URLs are from the same
+	// server this is the total of concurrent connections. If the user is downloading
+	// files from different servers, this limit is applied to each server idependently.
 	MaxParallelDownloadsPerServer int
 
 	// MaxRetriesPerChunk is the maximum amount of retries for each HTTP request
