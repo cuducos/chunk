@@ -13,7 +13,6 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "chunk",
 	Short: "Download tool for slow and unstable servers",
-	Long:  `The idea of the project emerged as it was difficult for Minha Receita to handle the download of 37 files that adds up to just approx. 5Gb. Most of the download solutions out there (e.g. got) seem to be prepared for downloading large files, not for downloading from slow and unstable servers — which is the case at hand.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		chunk := chunk.DefaultDownloader()
 		chunk.TimeoutPerChunk = timeoutChunk
