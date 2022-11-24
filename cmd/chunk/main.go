@@ -4,10 +4,8 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"time"
 
 	"github.com/cuducos/chunk"
-	"github.com/spf13/cobra"
 )
 
 var rootCmd = &cobra.Command{
