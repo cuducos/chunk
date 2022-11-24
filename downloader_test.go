@@ -316,7 +316,6 @@ func TestGetDownloadSize_WithRetry(t *testing.T) {
 	attempts := int32(0)
 	s := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
-			fmt.Printf("attempts = %d\n", atomic.LoadInt32(&attempts)) // TODO: remove
 			if atomic.CompareAndSwapInt32(&attempts, 0, 1) {
 				w.WriteHeader(http.StatusTooManyRequests)
 				return
@@ -327,8 +326,6 @@ func TestGetDownloadSize_WithRetry(t *testing.T) {
 	defer s.Close()
 
 	d := DefaultDownloader()
-	fmt.Printf("d.MaxRetriesPerChunk = %d\n", d.MaxRetriesPerChunk) // TODO: remove
-	fmt.Printf("d.WaitBetweenRetries = %v\n", d.WaitBetweenRetries) // TODO: remove
 	got, err := d.getDownloadSize(context.Background(), s.URL)
 
 	if err != nil {

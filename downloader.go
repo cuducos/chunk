@@ -69,7 +69,7 @@ type Downloader struct {
 	// this is the total of parallel requests. If the user is downloading files
 	// from different servers (including different subdomains), this limit is
 	// applied to each server idependently.
-	MaxParallelDownloadsPerServer uint
+	MaxParallelDownloadsPerServer int
 
 	// MaxRetriesPerChunk is the maximum amount of retries for each HTTP request
 	// using the content range header that fails.
@@ -143,17 +143,17 @@ func (d *Downloader) downloadChunkWithTimeout(userCtx context.Context, u string,
 }
 
 func (d *Downloader) getDownloadSize(ctx context.Context, u string) (int64, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodHead, u, nil)
-	if err != nil {
-		return 0, fmt.Errorf("creating the request for %s: %w", u, err)
-	}
 	ch := make(chan *http.Response, 1)
 	defer close(ch)
-	err = retry.Do(
+	err := retry.Do(
 		func() error {
+			req, err := http.NewRequestWithContext(ctx, http.MethodHead, u, nil)
+			if err != nil {
+				return fmt.Errorf("creating the request for %s: %w", u, err)
+			}
 			resp, err := d.client.Do(req)
 			if err != nil {
-				return err
+				return fmt.Errorf("dispatching the request for %s: %w", u, err)
 			}
 			if resp.StatusCode != 200 {
 				return fmt.Errorf("got unexpected http response status for %s: %s", u, resp.Status)
@@ -161,7 +161,7 @@ func (d *Downloader) getDownloadSize(ctx context.Context, u string) (int64, erro
 			ch <- resp
 			return nil
 		},
-		retry.Attempts(d.MaxParallelDownloadsPerServer),
+		retry.Attempts(d.MaxRetriesPerChunk),
 		retry.MaxDelay(d.WaitBetweenRetries),
 	)
 	if err != nil {
@@ -222,8 +222,7 @@ func (d *Downloader) chunks(t int64) []chunk {
 	return c
 }
 
-func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, wg *sync.WaitGroup, ch chan<- DownloadStatus) {
-	defer wg.Done()
+func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, ch chan<- DownloadStatus) {
 	path := filepath.Join(os.TempDir(), filepath.Base(url))
 	s := DownloadStatus{URL: url, DownloadedFilePath: path}
 	t, err := d.getDownloadSize(ctx, url)
@@ -240,27 +239,35 @@ func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, wg
 		ch <- s
 		return
 	}
-	defer f.Close()
+	var urlDownload sync.WaitGroup
+	defer func() {
+		urlDownload.Wait()
+		f.Close()
+	}()
 	if err := f.Truncate(int64(t)); err != nil {
 		s.Error = fmt.Errorf("error truncating %s to %d: %w", path, t, err)
 		ch <- s
 		return
 	}
 	for _, c := range d.chunks(t) {
-		b, err := d.downloadChunk(ctx, url, c)
-		if err != nil {
-			s.Error = err
+		urlDownload.Add(1)
+		go func(c chunk) {
+			defer urlDownload.Done()
+			b, err := d.downloadChunk(ctx, url, c)
+			if err != nil {
+				s.Error = err
+				ch <- s
+				return
+			}
+			n, err := f.WriteAt(b, c.start)
+			if err != nil {
+				s.Error = fmt.Errorf("error writing to %s: %w", path, err)
+				ch <- s
+				return
+			}
+			s.DownloadedFileBytes += int64(n)
 			ch <- s
-			return
-		}
-		_, err = f.WriteAt(b, int64(c.start))
-		if err != nil {
-			s.Error = fmt.Errorf("error writing to %s: %w", path, err)
-			ch <- s
-			return
-		}
-		s.DownloadedFileBytes += int64(len(b))
-		ch <- s
+		}(c)
 	}
 }
 
@@ -268,13 +275,17 @@ func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, wg
 // context can be used to stop all downloads in progress.
 func (d *Downloader) DownloadWithContext(ctx context.Context, urls ...string) <-chan DownloadStatus {
 	if d.client == nil {
-		d.client = &http.Client{Timeout: d.TimeoutPerChunk}
+		d.client = newClient(d.MaxParallelDownloadsPerServer, d.TimeoutPerChunk)
 	}
-	ch := make(chan DownloadStatus)
-	var wg sync.WaitGroup
+	ch := make(chan DownloadStatus, 2*len(urls)) // the first status will be the total file size (and or an error creating/trucating the file).
+	var wg sync.WaitGroup                        // this wait group is used to wait for all chunks (from all downloads) to finish.
 	for _, u := range urls {
 		wg.Add(1)
-		go d.prepareAndStartDownload(ctx, u, &wg, ch)
+		go func(u string) {
+			d.prepareAndStartDownload(ctx, u, ch)
+			wg.Done()
+		}(u)
+
 	}
 	go func() {
 		wg.Wait()
@@ -292,14 +303,22 @@ func (d *Downloader) Download(urls ...string) <-chan DownloadStatus {
 // NewDownloader creates a downloader with the defalt configuration. Check
 // the constants in this package for their values.
 func DefaultDownloader() *Downloader {
-	d := Downloader{
+	return &Downloader{
 		TimeoutPerChunk:               DefaultTimeoutPerChunk,
 		MaxParallelDownloadsPerServer: DefaultMaxParallelDownloadsPerServer,
 		MaxRetriesPerChunk:            DefaultMaxRetriesPerChunk,
 		ChunkSize:                     DefaultChunkSize,
 		WaitBetweenRetries:            DefaultWaitBetweenRetries,
+		client:                        newClient(DefaultMaxRetriesPerChunk, DefaultTimeoutPerChunk),
 	}
-	d.client = &http.Client{Timeout: d.TimeoutPerChunk}
+}
 
-	return &d
+func newClient(maxParallelDownloadsPerServer int, timeoutPerChunk time.Duration) *http.Client {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.MaxConnsPerHost = maxParallelDownloadsPerServer
+	t.MaxIdleConnsPerHost = maxParallelDownloadsPerServer
+	return &http.Client{
+		Timeout:   timeoutPerChunk,
+		Transport: t,
+	}
 }
