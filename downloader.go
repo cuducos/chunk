@@ -15,11 +15,11 @@ import (
 )
 
 const (
-	DefaultTimeoutPerChunk               = 90 * time.Second
-	DefaultMaxParallelDownloadsPerServer = 8
-	DefaultMaxRetriesPerChunk            = 5
-	DefaultChunkSize                     = 8192
-	DefaultWaitBetweenRetries            = 1 * time.Second
+	DefaultTimeout              = 90 * time.Second
+	DefaultConcurrencyPerServer = 8
+	DefaultMaxRetries           = 5
+	DefaultChunkSize            = 8192
+	DefaultWaitRetry            = 1 * time.Second
 )
 
 // DownloadStatus is the data propagated via the channel sent back to the user
@@ -62,17 +62,17 @@ type Downloader struct {
 	// URL. A chunk is a part of a file requested using the content range HTTP
 	// header. Thus, this timeout is not the timeout for the each file or for
 	// the the download of every file).
-	TimeoutPerChunk time.Duration
+	Timeout time.Duration
 
 	// MaxParallelDownloadsPerServer controls the max number of concurrent
 	// connections opened to the same server. If all the URLs are from the same
 	// server this is the total of concurrent connections. If the user is downloading
 	// files from different servers, this limit is applied to each server idependently.
-	MaxParallelDownloadsPerServer int
+	ConcurrencyPerServer int
 
 	// MaxRetriesPerChunk is the maximum amount of retries for each HTTP request
 	// using the content range header that fails.
-	MaxRetriesPerChunk uint
+	MaxRetries uint
 
 	// ChunkSize is the maximum size of each HTTP request done using the
 	// content range header. There is no way to specify how many chunks a
@@ -82,7 +82,7 @@ type Downloader struct {
 
 	// WaitBetweenRetries is an optional pause before retrying an HTTP request
 	// that has failed.
-	WaitBetweenRetries time.Duration
+	WaitRetry time.Duration
 }
 
 type chunk struct {
@@ -116,7 +116,7 @@ func (d *Downloader) downloadChunkWithContext(ctx context.Context, u string, c c
 }
 
 func (d *Downloader) downloadChunkWithTimeout(userCtx context.Context, u string, c chunk) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(userCtx, d.TimeoutPerChunk) // need to propagate context, which might contain app-specific data.
+	ctx, cancel := context.WithTimeout(userCtx, d.Timeout) // need to propagate context, which might contain app-specific data.
 	defer cancel()
 	ch := make(chan []byte)
 	errs := make(chan error)
@@ -160,8 +160,8 @@ func (d *Downloader) getDownloadSize(ctx context.Context, u string) (int64, erro
 			ch <- resp
 			return nil
 		},
-		retry.Attempts(d.MaxRetriesPerChunk),
-		retry.MaxDelay(d.WaitBetweenRetries),
+		retry.Attempts(d.MaxRetries),
+		retry.MaxDelay(d.WaitRetry),
 	)
 	if err != nil {
 		return 0, fmt.Errorf("error sending get http request to %s: %w", u, err)
@@ -193,8 +193,8 @@ func (d *Downloader) downloadChunk(ctx context.Context, u string, c chunk) ([]by
 			ch <- b
 			return nil
 		},
-		retry.Attempts(d.MaxRetriesPerChunk),
-		retry.MaxDelay(d.WaitBetweenRetries),
+		retry.Attempts(d.MaxRetries),
+		retry.MaxDelay(d.WaitRetry),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error downloading %s: %w", u, err)
@@ -274,7 +274,7 @@ func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, ch
 // context can be used to stop all downloads in progress.
 func (d *Downloader) DownloadWithContext(ctx context.Context, urls ...string) <-chan DownloadStatus {
 	if d.client == nil {
-		d.client = newClient(d.MaxParallelDownloadsPerServer, d.TimeoutPerChunk)
+		d.client = newClient(d.ConcurrencyPerServer, d.Timeout)
 	}
 	ch := make(chan DownloadStatus, 2*len(urls)) // the first status will be the total file size (and or an error creating/trucating the file).
 	var wg sync.WaitGroup                        // this wait group is used to wait for all chunks (from all downloads) to finish.
@@ -303,12 +303,12 @@ func (d *Downloader) Download(urls ...string) <-chan DownloadStatus {
 // the constants in this package for their values.
 func DefaultDownloader() *Downloader {
 	return &Downloader{
-		TimeoutPerChunk:               DefaultTimeoutPerChunk,
-		MaxParallelDownloadsPerServer: DefaultMaxParallelDownloadsPerServer,
-		MaxRetriesPerChunk:            DefaultMaxRetriesPerChunk,
-		ChunkSize:                     DefaultChunkSize,
-		WaitBetweenRetries:            DefaultWaitBetweenRetries,
-		client:                        newClient(DefaultMaxRetriesPerChunk, DefaultTimeoutPerChunk),
+		Timeout:              DefaultTimeout,
+		ConcurrencyPerServer: DefaultConcurrencyPerServer,
+		MaxRetries:           DefaultMaxRetries,
+		ChunkSize:            DefaultChunkSize,
+		WaitRetry:            DefaultWaitRetry,
+		client:               newClient(DefaultMaxRetries, DefaultTimeout),
 	}
 }
 

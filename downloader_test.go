@@ -38,11 +38,11 @@ func TestDownload_Error(t *testing.T) {
 			))
 			defer s.Close()
 			d := Downloader{
-				TimeoutPerChunk:               timeout,
-				MaxRetriesPerChunk:            4,
-				MaxParallelDownloadsPerServer: 1,
-				ChunkSize:                     1024,
-				WaitBetweenRetries:            0 * time.Second,
+				Timeout:              timeout,
+				MaxRetries:           4,
+				ConcurrencyPerServer: 1,
+				ChunkSize:            1024,
+				WaitRetry:            0 * time.Second,
 			}
 			ch := d.Download(s.URL)
 			<-ch // discard the first got (just the file size)
@@ -191,11 +191,11 @@ func TestDownload_Retry(t *testing.T) {
 			defer s.Close()
 
 			d := Downloader{
-				TimeoutPerChunk:               timeout,
-				MaxRetriesPerChunk:            4,
-				MaxParallelDownloadsPerServer: 1,
-				ChunkSize:                     1024,
-				WaitBetweenRetries:            0 * time.Second,
+				Timeout:              timeout,
+				MaxRetries:           4,
+				ConcurrencyPerServer: 1,
+				ChunkSize:            1024,
+				WaitRetry:            0 * time.Second,
 			}
 			ch := d.Download(s.URL)
 			<-ch // discard the first status (just the file size)
@@ -243,11 +243,11 @@ func TestDownloadWithContext_ErrorUserTimeout(t *testing.T) {
 	))
 	defer s.Close()
 	d := Downloader{
-		TimeoutPerChunk:               timeout,
-		MaxRetriesPerChunk:            4,
-		MaxParallelDownloadsPerServer: 1,
-		ChunkSize:                     1024,
-		WaitBetweenRetries:            0 * time.Second,
+		Timeout:              timeout,
+		MaxRetries:           4,
+		ConcurrencyPerServer: 1,
+		ChunkSize:            1024,
+		WaitRetry:            0 * time.Second,
 	}
 	userCtx, cancFunc := context.WithTimeout(context.Background(), userTimeout)
 	defer cancFunc()
