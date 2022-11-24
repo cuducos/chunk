@@ -139,7 +139,6 @@ func TestDownload_ZIPArchive(t *testing.T) {
 	var got string
 	defer os.Remove(got)
 	for g := range DefaultDownloader().Download(s.URL + "/archive.zip") {
-		fmt.Println(g)
 		got = g.DownloadedFilePath
 		if g.Error != nil {
 			t.Errorf("expected no error during the download of the zip archive, got %s", g.Error)
