@@ -9,8 +9,14 @@ function checkExitCode () {
     fi
     echo "[done] $2"
 }
+
 echo "####### Pre-commit hook Starting #######"
 checkExitCode 'staticcheck ./...' 'Staticcheck'
-checkExitCode 'go fmt ./...' 'Gofmt'
+echo "[running] Gofmt"
+if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+    echo "[FAILED] Gofmt failed"
+    exit 1
+fi
+echo "[done] Gofmt"
 checkExitCode 'go test -race ./...' 'Go test'
 echo "####### Pre-commit hook Finished #######"
