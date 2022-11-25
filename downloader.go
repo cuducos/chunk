@@ -54,7 +54,11 @@ func (s *DownloadStatus) IsFinished() bool {
 // handled, including retries, amoutn of requets, and size of each request, for
 // example.
 type Downloader struct {
-	// Client is the HTTP client used for every request needed to download all
+	// OutputDir is where the downloaded files will be saved.  If not set,
+	// defaults to the current working directory.
+	OutputDir string
+
+	// client is the HTTP client used for every request needed to download all
 	// the files.
 	client *http.Client
 
@@ -222,7 +226,7 @@ func (d *Downloader) chunks(t int64) []chunk {
 }
 
 func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, ch chan<- DownloadStatus) {
-	path := filepath.Join(os.TempDir(), filepath.Base(url))
+	path := filepath.Join(d.OutputDir, filepath.Base(url))
 	s := DownloadStatus{URL: url, DownloadedFilePath: path}
 	t, err := d.getDownloadSize(ctx, url)
 	if err != nil {
@@ -302,7 +306,12 @@ func (d *Downloader) Download(urls ...string) <-chan DownloadStatus {
 // NewDownloader creates a downloader with the defalt configuration. Check
 // the constants in this package for their values.
 func DefaultDownloader() *Downloader {
+	dir, err := os.Getwd()
+	if err != nil {
+		dir = ""
+	}
 	return &Downloader{
+		OutputDir:            dir,
 		Timeout:              DefaultTimeout,
 		ConcurrencyPerServer: DefaultConcurrencyPerServer,
 		MaxRetries:           DefaultMaxRetries,

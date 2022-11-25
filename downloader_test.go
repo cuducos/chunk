@@ -38,6 +38,7 @@ func TestDownload_Error(t *testing.T) {
 			))
 			defer s.Close()
 			d := Downloader{
+				OutputDir:            t.TempDir(),
 				Timeout:              timeout,
 				MaxRetries:           4,
 				ConcurrencyPerServer: 1,
@@ -72,7 +73,9 @@ func TestDownload_OkWithDefaultDownloader(t *testing.T) {
 	))
 	defer s.Close()
 
-	ch := DefaultDownloader().Download(s.URL)
+	d := DefaultDownloader()
+	d.OutputDir = t.TempDir()
+	ch := d.Download(s.URL)
 	<-ch // discard the first status (just the file size)
 	got := <-ch
 	defer os.Remove(got.DownloadedFilePath)
@@ -138,7 +141,9 @@ func TestDownload_ZIPArchive(t *testing.T) {
 	// download
 	var got string
 	defer os.Remove(got)
-	for g := range DefaultDownloader().Download(s.URL + "/archive.zip") {
+	d := DefaultDownloader()
+	d.OutputDir = t.TempDir()
+	for g := range d.Download(s.URL + "/archive.zip") {
 		got = g.DownloadedFilePath
 		if g.Error != nil {
 			t.Errorf("expected no error during the download of the zip archive, got %s", g.Error)
@@ -191,6 +196,7 @@ func TestDownload_Retry(t *testing.T) {
 			defer s.Close()
 
 			d := Downloader{
+				OutputDir:            t.TempDir(),
 				Timeout:              timeout,
 				MaxRetries:           4,
 				ConcurrencyPerServer: 1,
@@ -243,6 +249,7 @@ func TestDownloadWithContext_ErrorUserTimeout(t *testing.T) {
 	))
 	defer s.Close()
 	d := Downloader{
+		OutputDir:            t.TempDir(),
 		Timeout:              timeout,
 		MaxRetries:           4,
 		ConcurrencyPerServer: 1,
