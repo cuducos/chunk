@@ -107,6 +107,34 @@ func (p *progress) done(idx int) error {
 	return nil
 }
 
+// check is all the chunks of the current download are done
+func (p *progress) isDone() (bool, error) {
+	for idx := range p.Chunks {
+		s, err := p.shouldDownload(idx)
+		if err != nil {
+			return false, fmt.Errorf("error checking if chunk #%d for %s done: %w", idx+1, p.URL, err)
+		}
+		if s {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+// removes this progress file it the download is done
+func (p *progress) close() error {
+	done, err := p.isDone()
+	if err != nil {
+		return fmt.Errorf("error checking if %s is done: %w", p.URL, err)
+	}
+	if done {
+		if err := os.Remove(p.path); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("error cleaning up progress file %s: %w", p.path, err)
+		}
+	}
+	return nil // Either not empty or error, suits both cases
+}
+
 func newProgress(path, url string, chunkSize int64, chunks int, restart bool) (*progress, error) {
 	dir, err := getChunkDirectory()
 	if err != nil {
