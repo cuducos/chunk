@@ -32,9 +32,6 @@ func TestProgress_FromScratch(t *testing.T) {
 			}
 		}
 	}
-	if err := p.close(); err != nil {
-		t.Errorf("expected no errors saving the progress file, got %s", err)
-	}
 	if _, err := os.ReadFile(p.path); err != nil {
 		t.Errorf("expected no errors reading the progress file, got %s", err)
 	}
@@ -63,12 +60,6 @@ func TestProgress_ParallelComplete(t *testing.T) {
 		}
 	}
 	close(errs)
-	if err := p.close(); err != nil {
-		t.Errorf("expected no errors removing the progress file, got %s", err)
-	}
-	if _, err := os.ReadFile(p.path); !os.IsNotExist(err) {
-		t.Errorf("expected progress file not to exist, rediong it returned error %s", err)
-	}
 }
 
 func TestProgress_FromFile(t *testing.T) {
@@ -79,8 +70,6 @@ func TestProgress_FromFile(t *testing.T) {
 		t.Errorf("expected no error creating the old progress, got %s", err)
 	}
 	old.done(1)
-	old.close()
-
 	p, err := newProgress(name, "https://test.etc/chunk.zip", 5, 3, false)
 	if err != nil {
 		t.Errorf("expected no error creating the progress, got %s", err)
@@ -100,9 +89,6 @@ func TestProgress_FromFile(t *testing.T) {
 			}
 		}
 	}
-	if err := p.close(); err != nil {
-		t.Errorf("expected no errors saving the progress file, got %s", err)
-	}
 	if _, err := os.ReadFile(p.path); err != nil {
 		t.Errorf("expected no errors reading the progress file, got %s", err)
 	}
@@ -116,8 +102,6 @@ func TestProgress_FromFileWithInvalidChunkSize(t *testing.T) {
 		t.Errorf("expected no error creating the old progress, got %s", err)
 	}
 	old.done(1)
-	old.close()
-
 	if _, err := newProgress(name, "https://test.etc/chunk.zip", 10, 3, false); err == nil {
 		t.Error("expected error creating the progress with different chunk size")
 	}
@@ -131,8 +115,6 @@ func TestProgress_FromFileWithRestart(t *testing.T) {
 		t.Errorf("expected no error creating the old progress, got %s", err)
 	}
 	old.done(1)
-	old.close()
-
 	p, err := newProgress(name, "https://test.etc/chunk.zip", 10, 3, true)
 	if err != nil {
 		t.Errorf("expected no error creating the progress, got %s", err)
