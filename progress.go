@@ -11,13 +11,16 @@ import (
 	"sync/atomic"
 )
 
+const defaultChunkDir = ".chunk"
+
 // get the chunk directory under user's home directory
+// TODO: make it configurable (maybe an envvar?)
 func getChunkDirectory() (string, error) {
 	u, err := user.Current()
 	if err != nil {
 		return "", fmt.Errorf("could not get current user: %w", err)
 	}
-	d := filepath.Join(u.HomeDir, ".chunk")
+	d := filepath.Join(u.HomeDir, defaultChunkDir)
 	if err := os.MkdirAll(d, 0755); err != nil {
 		return "", fmt.Errorf("could not create chunk's directory %s: %w", d, err)
 	}
@@ -145,8 +148,12 @@ func newProgress(path, url string, chunkSize int64, chunks int, restart bool) (*
 		return nil, fmt.Errorf("could not get the download absolute path: %w", err)
 	}
 	hash := fmt.Sprintf("%x", md5.Sum([]byte(fmt.Sprintf("%s|%s", url, abs))))
+
+	// file name is a hash of the URL and local file path, plus the file name
+	// in an human-readable way for debugging purposes
+	name := fmt.Sprintf("%s-%s", hash, filepath.Base(path))
 	p := progress{
-		path:      filepath.Join(dir, fmt.Sprintf("%s-%s", hash, filepath.Base(path))),
+		path:      filepath.Join(dir, name),
 		URL:       url,
 		Path:      abs,
 		ChunkSize: chunkSize,
