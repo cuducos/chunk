@@ -1,15 +1,31 @@
 package chunk
 
 import (
+	"crypto/md5"
 	"encoding/gob"
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
 )
 
-const progressFilePrefix = ".chunk-progress-"
+const defaultChunkDir = ".chunk"
+
+// get the chunk directory under user's home directory
+// TODO: make it configurable (maybe an envvar?)
+func getChunkDirectory() (string, error) {
+	u, err := user.Current()
+	if err != nil {
+		return "", fmt.Errorf("could not get current user: %w", err)
+	}
+	d := filepath.Join(u.HomeDir, defaultChunkDir)
+	if err := os.MkdirAll(d, 0755); err != nil {
+		return "", fmt.Errorf("could not create chunk's directory %s: %w", d, err)
+	}
+	return d, nil
+}
 
 type progress struct {
 	// path for persistence of this progress file
@@ -99,7 +115,7 @@ func (p *progress) isDone() (bool, error) {
 	for idx := range p.Chunks {
 		s, err := p.shouldDownload(idx)
 		if err != nil {
-			return false, fmt.Errorf("error checking if chunk is done: %w", err)
+			return false, fmt.Errorf("error checking if chunk #%d for %s done: %w", idx+1, p.URL, err)
 		}
 		if s {
 			return false, nil
@@ -110,28 +126,36 @@ func (p *progress) isDone() (bool, error) {
 
 // removes this progress file it the download is done
 func (p *progress) close() error {
-	ok, err := p.isDone()
+	done, err := p.isDone()
 	if err != nil {
-		return fmt.Errorf("error checking if donwload is done: %w", err)
+		return fmt.Errorf("error checking if %s is done: %w", p.URL, err)
 	}
-	if !ok {
-		return nil
-	}
-	if err := os.Remove(p.path); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("error cleaning up progress files %s: %w", p.path, err)
+	if done {
+		if err := os.Remove(p.path); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("error cleaning up progress file %s: %w", p.path, err)
+		}
 	}
 	return nil // Either not empty or error, suits both cases
 }
 
 func newProgress(path, url string, chunkSize int64, chunks int, restart bool) (*progress, error) {
-	absPath, err := filepath.Abs(path)
+	dir, err := getChunkDirectory()
 	if err != nil {
-		return nil, fmt.Errorf("error getting absolute path for %s: %w", path, err)
+		return nil, fmt.Errorf("could not get chunk's directory: %w", err)
 	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("could not get the download absolute path: %w", err)
+	}
+	hash := fmt.Sprintf("%x", md5.Sum([]byte(fmt.Sprintf("%s|%s", url, abs))))
+
+	// file name is a hash of the URL and local file path, plus the file name
+	// in an human-readable way for debugging purposes
+	name := fmt.Sprintf("%s-%s", hash, filepath.Base(path))
 	p := progress{
-		path:      filepath.Join(filepath.Dir(absPath), progressFilePrefix+filepath.Base(absPath)),
+		path:      filepath.Join(dir, name),
 		URL:       url,
-		Path:      absPath,
+		Path:      abs,
 		ChunkSize: chunkSize,
 		Chunks:    make([]uint32, chunks),
 	}
