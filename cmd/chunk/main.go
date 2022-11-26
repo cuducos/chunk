@@ -66,6 +66,7 @@ var (
 	maxRetriesChunk      uint
 	chunkSize            int64
 	waitBetweenRetries   time.Duration
+	continueDownload     bool
 )
 
 func init() {
@@ -75,6 +76,7 @@ func init() {
 	rootCmd.Flags().DurationVarP(&waitBetweenRetries, "wait-retry", "w", chunk.DefaultWaitRetry, "pause before retrying an HTTP request that has failed.")
 	rootCmd.Flags().Int64VarP(&chunkSize, "chunk-size", "s", chunk.DefaultChunkSize, "maximum size of each HTTP request done using the content range header.")
 	rootCmd.Flags().IntVarP(&concurrencyPerServer, "concurrency-per-server", "c", chunk.DefaultConcurrencyPerServer, "controls the max number of concurrent connections opened to the same server.")
+	rootCmd.Flags().BoolVarP(&continueDownload, "continue-download", "n", chunk.DefaultContinueDownloads, "continues previous downloads from where they were stopped")
 }
 
 func main() {
