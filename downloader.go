@@ -58,9 +58,11 @@ type Downloader struct {
 	// defaults to the current working directory.
 	OutputDir string
 
-	// client is the HTTP client used for every request needed to download all
-	// the files.
-	client *http.Client
+	// Client is the HTTP client used for all requests. It uses a customized
+	// HTTP transport and timeout to handle content ranges download and
+	// parallel requests to the same server. Check NewHTTPClient for
+	// customizing it.
+	Client *http.Client
 
 	// TimeoutPerChunk is the timeout for the download of each chunk from each
 	// URL. A chunk is a part of a file requested using the content range HTTP
@@ -103,7 +105,7 @@ func (d *Downloader) downloadChunkWithContext(ctx context.Context, u string, c c
 		return nil, fmt.Errorf("error creating the request for %s: %w", u, err)
 	}
 	req.Header.Set("Range", c.rangeHeader())
-	resp, err := d.client.Do(req)
+	resp, err := d.Client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error sending a get http request to %s: %w", u, err)
 	}
@@ -154,7 +156,7 @@ func (d *Downloader) getDownloadSize(ctx context.Context, u string) (int64, erro
 			if err != nil {
 				return fmt.Errorf("creating the request for %s: %w", u, err)
 			}
-			resp, err := d.client.Do(req)
+			resp, err := d.Client.Do(req)
 			if err != nil {
 				return fmt.Errorf("dispatching the request for %s: %w", u, err)
 			}
@@ -277,8 +279,8 @@ func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, ch
 // DownloadWithContext is a version of Download that takes a context. The
 // context can be used to stop all downloads in progress.
 func (d *Downloader) DownloadWithContext(ctx context.Context, urls ...string) <-chan DownloadStatus {
-	if d.client == nil {
-		d.client = newClient(d.ConcurrencyPerServer, d.Timeout)
+	if d.Client == nil {
+		d.Client = newClient(d.ConcurrencyPerServer, d.Timeout)
 	}
 	ch := make(chan DownloadStatus, 2*len(urls)) // the first status will be the total file size (and or an error creating/trucating the file).
 	var wg sync.WaitGroup                        // this wait group is used to wait for all chunks (from all downloads) to finish.
@@ -317,7 +319,7 @@ func DefaultDownloader() *Downloader {
 		MaxRetries:           DefaultMaxRetries,
 		ChunkSize:            DefaultChunkSize,
 		WaitRetry:            DefaultWaitRetry,
-		client:               newClient(DefaultMaxRetries, DefaultTimeout),
+		Client:               newClient(DefaultMaxRetries, DefaultTimeout),
 	}
 }
 
@@ -325,6 +327,7 @@ func newClient(maxParallelDownloadsPerServer int, timeoutPerChunk time.Duration)
 	t := http.DefaultTransport.(*http.Transport).Clone()
 	t.MaxConnsPerHost = maxParallelDownloadsPerServer
 	t.MaxIdleConnsPerHost = maxParallelDownloadsPerServer
+
 	return &http.Client{
 		Timeout:   timeoutPerChunk,
 		Transport: t,
