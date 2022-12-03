@@ -293,8 +293,7 @@ func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, ch
 				ch <- s
 				return
 			}
-			atomic.AddInt64(&downloadedBytes, c.size())
-			s.DownloadedFileBytes = downloadedBytes
+			s.DownloadedFileBytes = atomic.AddInt64(&downloadedBytes, c.size())
 			ch <- s
 		}(c, idx, s)
 	}
