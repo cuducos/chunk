@@ -138,6 +138,17 @@ func (p *progress) close() error {
 	return nil // Either not empty or error, suits both cases
 }
 
+// calculates the number of bytes downloaded
+func (p *progress) downloadedBytes() int64 {
+	var downloaded int64
+	for idx := range p.Chunks {
+		if p.Chunks[idx] == 1 {
+			downloaded += p.ChunkSize
+		}
+	}
+	return downloaded
+}
+
 func newProgress(path, url string, chunkSize int64, chunks int, restart bool) (*progress, error) {
 	dir, err := getChunkDirectory()
 	if err != nil {

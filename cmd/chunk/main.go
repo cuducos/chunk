@@ -46,14 +46,14 @@ var rootCmd = &cobra.Command{
 		chunk.MaxRetries = maxRetriesChunk
 		chunk.WaitRetry = waitBetweenRetries
 		chunk.ChunkSize = chunkSize
+		chunk.RestartDownloads = restartDownloads
 		prog := newProgress()
-		for status := range chunk.Download(os.Args[1:len(os.Args)]...) {
+		for status := range chunk.Download(args...) {
 			if status.Error != nil {
 				log.Fatal(status.Error)
 			}
 			prog.update(status)
 		}
-		fmt.Printf("\r%s\nDownloaded to: %s", prog.String(), os.TempDir())
 		return nil
 	},
 }
@@ -66,7 +66,7 @@ var (
 	maxRetriesChunk      uint
 	chunkSize            int64
 	waitBetweenRetries   time.Duration
-	continueDownload     bool
+	restartDownloads     bool
 )
 
 func init() {
@@ -76,7 +76,7 @@ func init() {
 	rootCmd.Flags().DurationVarP(&waitBetweenRetries, "wait-retry", "w", chunk.DefaultWaitRetry, "pause before retrying an HTTP request that has failed.")
 	rootCmd.Flags().Int64VarP(&chunkSize, "chunk-size", "s", chunk.DefaultChunkSize, "maximum size of each HTTP request done using the content range header.")
 	rootCmd.Flags().IntVarP(&concurrencyPerServer, "concurrency-per-server", "c", chunk.DefaultConcurrencyPerServer, "controls the max number of concurrent connections opened to the same server.")
-	rootCmd.Flags().BoolVarP(&continueDownload, "continue-download", "n", chunk.DefaultContinueDownloads, "continues previous downloads from where they were stopped")
+	rootCmd.Flags().BoolVarP(&restartDownloads, "force-restart", "f", chunk.DefaultRestartDownload, "restart previous downloads, ignoring where they were stopped")
 }
 
 func main() {

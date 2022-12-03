@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/avast/retry-go"
@@ -20,7 +21,7 @@ const (
 	DefaultMaxRetries           = 5
 	DefaultChunkSize            = 8192
 	DefaultWaitRetry            = 1 * time.Second
-	DefaultContinueDownloads    = false
+	DefaultRestartDownload      = false
 )
 
 // DownloadStatus is the data propagated via the channel sent back to the user
@@ -89,9 +90,9 @@ type Downloader struct {
 	// that has failed.
 	WaitRetry time.Duration
 
-	// ContinueDownloads controls whether or not to continue the download of
+	// RestartDownloads controls whether or not to continue the download of
 	// previous download attempts, skipping chunks alreadt downloaded.
-	ContinueDownloads bool
+	RestartDownloads bool
 }
 
 type chunk struct{ start, end int64 }
@@ -245,7 +246,7 @@ func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, ch
 		return
 	}
 	chunks := d.chunks(t)
-	p, err := newProgress(s.DownloadedFilePath, s.URL, d.ChunkSize, len(chunks), d.ContinueDownloads)
+	p, err := newProgress(s.DownloadedFilePath, s.URL, d.ChunkSize, len(chunks), d.RestartDownloads)
 	if err != nil {
 		s.Error = fmt.Errorf("could not creat a progress file: %w", err)
 		ch <- s
@@ -262,6 +263,7 @@ func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, ch
 		ch <- s
 		return
 	}
+	downloadedBytes := p.downloadedBytes()
 	for idx, c := range chunks {
 		pending, err := p.shouldDownload(idx)
 		if err != nil {
@@ -281,8 +283,7 @@ func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, ch
 				ch <- s
 				return
 			}
-			n, err := f.WriteAt(b, c.start)
-			if err != nil {
+			if _, err := f.WriteAt(b, c.start); err != nil {
 				s.Error = fmt.Errorf("error writing to %s: %w", path, err)
 				ch <- s
 				return
@@ -292,7 +293,8 @@ func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, ch
 				ch <- s
 				return
 			}
-			s.DownloadedFileBytes += int64(n)
+			atomic.AddInt64(&downloadedBytes, c.size())
+			s.DownloadedFileBytes = downloadedBytes
 			ch <- s
 		}(c, idx, s)
 	}
