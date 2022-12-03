@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/avast/retry-go"
@@ -20,6 +21,7 @@ const (
 	DefaultMaxRetries           = 5
 	DefaultChunkSize            = 8192
 	DefaultWaitRetry            = 1 * time.Second
+	DefaultRestartDownload      = false
 )
 
 // DownloadStatus is the data propagated via the channel sent back to the user
@@ -89,12 +91,13 @@ type Downloader struct {
 	// WaitBetweenRetries is an optional pause before retrying an HTTP request
 	// that has failed.
 	WaitRetry time.Duration
+
+	// RestartDownloads controls whether or not to continue the download of
+	// previous download attempts, skipping chunks alreadt downloaded.
+	RestartDownloads bool
 }
 
-type chunk struct {
-	start int64
-	end   int64
-}
+type chunk struct{ start, end int64 }
 
 func (c chunk) size() int64         { return (c.end + 1) - c.start }
 func (c chunk) rangeHeader() string { return fmt.Sprintf("bytes=%d-%d", c.start, c.end) }
@@ -244,9 +247,17 @@ func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, ch
 		ch <- s
 		return
 	}
+	chunks := d.chunks(t)
+	p, err := newProgress(s.DownloadedFilePath, s.URL, d.ChunkSize, len(chunks), d.RestartDownloads)
+	if err != nil {
+		s.Error = fmt.Errorf("could not creat a progress file: %w", err)
+		ch <- s
+		return
+	}
 	var urlDownload sync.WaitGroup
 	defer func() {
 		urlDownload.Wait()
+		p.close()
 		f.Close()
 	}()
 	if err := f.Truncate(int64(t)); err != nil {
@@ -254,25 +265,40 @@ func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, ch
 		ch <- s
 		return
 	}
-	for _, c := range d.chunks(t) {
+	downloadedBytes := p.downloadedBytes()
+	for idx, c := range chunks {
+		pending, err := p.shouldDownload(idx)
+		if err != nil {
+			s.Error = fmt.Errorf("could not determine whether chunk #%d is pending: %w", idx+1, err)
+			ch <- s
+			return
+		}
+		if !pending {
+			continue
+		}
 		urlDownload.Add(1)
-		go func(c chunk, s DownloadStatus) {
+		go func(c chunk, idx int, s DownloadStatus) {
 			defer urlDownload.Done()
 			b, err := d.downloadChunk(ctx, url, c)
 			if err != nil {
-				s.Error = err
+				s.Error = fmt.Errorf("error downloadinf chunk #%d: %w", idx+1, err)
 				ch <- s
 				return
 			}
-			n, err := f.WriteAt(b, c.start)
-			if err != nil {
+			written := int64(len(b))
+			if _, err := f.WriteAt(b, c.start); err != nil {
 				s.Error = fmt.Errorf("error writing to %s: %w", path, err)
 				ch <- s
 				return
 			}
-			s.DownloadedFileBytes += int64(n)
+			if err := p.done(idx, written); err != nil {
+				s.Error = fmt.Errorf("error checking chunk #%d as done: %w", idx+1, err)
+				ch <- s
+				return
+			}
+			s.DownloadedFileBytes = atomic.AddInt64(&downloadedBytes, written)
 			ch <- s
-		}(c, s)
+		}(c, idx, s)
 	}
 }
 
