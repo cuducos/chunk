@@ -14,7 +14,7 @@ func TestProgress_FromScratch(t *testing.T) {
 	if err != nil {
 		t.Errorf("expected no error creating the progress, got %s", err)
 	}
-	if err := p.done(1); err != nil {
+	if err := p.done(1, 3); err != nil {
 		t.Errorf("expected no error marking chunk as done, got %s", err)
 	}
 	for i := 0; i < 3; i++ {
@@ -53,7 +53,7 @@ func TestProgress_ParallelComplete(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			errs <- p.done(i)
+			errs <- p.done(i, 2048)
 		}(i)
 	}
 	for i := 0; i < 2048; i++ {
@@ -78,7 +78,7 @@ func TestProgress_FromFile(t *testing.T) {
 	if err != nil {
 		t.Errorf("expected no error creating the old progress, got %s", err)
 	}
-	old.done(1)
+	old.done(1, 3)
 	old.close()
 
 	p, err := newProgress(name, "https://test.etc/chunk.zip", 5, 3, false)
@@ -115,7 +115,7 @@ func TestProgress_FromFileWithInvalidChunkSize(t *testing.T) {
 	if err != nil {
 		t.Errorf("expected no error creating the old progress, got %s", err)
 	}
-	old.done(1)
+	old.done(1, 3)
 	old.close()
 
 	if _, err := newProgress(name, "https://test.etc/chunk.zip", 10, 3, false); err == nil {
@@ -130,7 +130,7 @@ func TestProgress_FromFileWithRestart(t *testing.T) {
 	if err != nil {
 		t.Errorf("expected no error creating the old progress, got %s", err)
 	}
-	old.done(1)
+	old.done(1, 3)
 	old.close()
 
 	p, err := newProgress(name, "https://test.etc/chunk.zip", 10, 3, true)

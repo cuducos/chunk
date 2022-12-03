@@ -36,7 +36,7 @@ type progress struct {
 	URL       string
 	Path      string
 	ChunkSize int64
-	Chunks    []uint32
+	Chunks    []int64
 }
 
 // trues to loads a download progress from a file
@@ -91,13 +91,13 @@ func (p *progress) shouldDownload(idx int) (bool, error) {
 }
 
 // marks the chunk number `idx` as done (ie successfully downloaded)
-func (p *progress) done(idx int) error {
+func (p *progress) done(idx int, bytes int64) error {
 	if !p.isValidIndex(idx) {
 		return fmt.Errorf("%s does not have chunk #%d", p.Path, idx+1)
 	}
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	atomic.StoreUint32(&p.Chunks[idx], 1)
+	atomic.StoreInt64(&p.Chunks[idx], bytes)
 	f, err := os.Create(p.path)
 	if err != nil {
 		return fmt.Errorf("error opening progress file %s: %w", p.path, err)
@@ -141,10 +141,8 @@ func (p *progress) close() error {
 // calculates the number of bytes downloaded
 func (p *progress) downloadedBytes() int64 {
 	var downloaded int64
-	for idx := range p.Chunks {
-		if p.Chunks[idx] == 1 {
-			downloaded += p.ChunkSize
-		}
+	for _, c := range p.Chunks {
+		downloaded += c
 	}
 	return downloaded
 }
@@ -168,7 +166,7 @@ func newProgress(path, url string, chunkSize int64, chunks int, restart bool) (*
 		URL:       url,
 		Path:      abs,
 		ChunkSize: chunkSize,
-		Chunks:    make([]uint32, chunks),
+		Chunks:    make([]int64, chunks),
 	}
 	if err := p.load(restart); err != nil {
 		return nil, fmt.Errorf("error loading existing progress file: %w", err)

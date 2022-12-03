@@ -283,17 +283,18 @@ func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, ch
 				ch <- s
 				return
 			}
+			written := int64(len(b))
 			if _, err := f.WriteAt(b, c.start); err != nil {
 				s.Error = fmt.Errorf("error writing to %s: %w", path, err)
 				ch <- s
 				return
 			}
-			if err := p.done(idx); err != nil {
+			if err := p.done(idx, written); err != nil {
 				s.Error = fmt.Errorf("error checking chunk #%d as done: %w", idx+1, err)
 				ch <- s
 				return
 			}
-			s.DownloadedFileBytes = atomic.AddInt64(&downloadedBytes, c.size())
+			s.DownloadedFileBytes = atomic.AddInt64(&downloadedBytes, written)
 			ch <- s
 		}(c, idx, s)
 	}
