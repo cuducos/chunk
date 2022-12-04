@@ -95,6 +95,10 @@ type Downloader struct {
 	// RestartDownloads controls whether or not to continue the download of
 	// previous download attempts, skipping chunks alreadt downloaded.
 	RestartDownloads bool
+
+	// ProgressDir is the directory where Chunk keeps track of each chunk
+	// downloaded of each file.
+	ProgressDir string
 }
 
 type chunk struct{ start, end int64 }
@@ -248,7 +252,7 @@ func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, ch
 		return
 	}
 	chunks := d.chunks(t)
-	p, err := newProgress(s.DownloadedFilePath, s.URL, d.ChunkSize, len(chunks), d.RestartDownloads)
+	p, err := newProgress(s.DownloadedFilePath, d.ProgressDir, s.URL, d.ChunkSize, len(chunks), d.RestartDownloads)
 	if err != nil {
 		s.Error = fmt.Errorf("could not creat a progress file: %w", err)
 		ch <- s

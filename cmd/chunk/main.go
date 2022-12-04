@@ -67,6 +67,7 @@ var (
 	chunkSize            int64
 	waitBetweenRetries   time.Duration
 	restartDownloads     bool
+	progressDir          string
 )
 
 func init() {
@@ -77,6 +78,13 @@ func init() {
 	rootCmd.Flags().Int64VarP(&chunkSize, "chunk-size", "s", chunk.DefaultChunkSize, "maximum size of each HTTP request done using the content range header.")
 	rootCmd.Flags().IntVarP(&concurrencyPerServer, "concurrency-per-server", "c", chunk.DefaultConcurrencyPerServer, "controls the max number of concurrent connections opened to the same server.")
 	rootCmd.Flags().BoolVarP(&restartDownloads, "force-restart", "f", chunk.DefaultRestartDownload, "restart previous downloads, ignoring where they were stopped")
+	rootCmd.Flags().StringVarP(
+		&progressDir,
+		"progress-directory",
+		"p",
+		"",
+		fmt.Sprintf("directory where to track progress; %s under user's home directory if blank, or CHUNK_DIR environment variable", chunk.DefaultChunkDir),
+	)
 }
 
 func main() {
