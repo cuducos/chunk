@@ -5,7 +5,7 @@
 [![Lint](https://github.com/cuducos/chunk/actions/workflows/golint.yaml/badge.svg)](https://github.com/cuducos/chunk/actions/workflows/golint.yaml)
 [![GoDoc](https://godoc.org/github.com/cuducos/chunk?status.svg)](https://godoc.org/github.com/cuducos/chunk)
 
-Chunk a download tool for slow and unstable servers.
+Chunk is a download tool for slow and unstable servers.
 
 ## Usage
 
