@@ -18,22 +18,21 @@ const DefaultChunkDir = ".chunk"
 
 // get the chunk directory under user's home directory
 // TODO: make it configurable (maybe an envvar?)
-func getChunkDirectory(custom string) (string, error) {
-	d := os.Getenv("CHUNK_DIR")
-	if custom != "" {
-		d = custom
+func getChunkProgressDir(dir string) (string, error) {
+	if dir == "" {
+		dir = os.Getenv("CHUNK_DIR")
 	}
-	if d == "" {
+	if dir == "" {
 		u, err := user.Current()
 		if err != nil {
 			return "", fmt.Errorf("could not get current user: %w", err)
 		}
-		d = filepath.Join(u.HomeDir, DefaultChunkDir)
+		dir = filepath.Join(u.HomeDir, DefaultChunkDir)
 	}
-	if err := os.MkdirAll(d, 0755); err != nil {
-		return "", fmt.Errorf("could not create chunk's directory %s: %w", d, err)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", fmt.Errorf("could not create chunk's directory %s: %w", dir, err)
 	}
-	return d, nil
+	return dir, nil
 }
 
 type progress struct {
@@ -157,7 +156,7 @@ func (p *progress) downloadedBytes() int64 {
 }
 
 func newProgress(path, dir string, url string, chunkSize int64, chunks int, restart bool) (*progress, error) {
-	dir, err := getChunkDirectory(dir)
+	dir, err := getChunkProgressDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("could not get chunk's directory: %w", err)
 	}
