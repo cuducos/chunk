@@ -47,6 +47,7 @@ var rootCmd = &cobra.Command{
 		chunk.WaitRetry = waitBetweenRetries
 		chunk.ChunkSize = chunkSize
 		chunk.RestartDownloads = restartDownloads
+		chunk.ProgressDir = progressDir
 		prog := newProgress()
 		for status := range chunk.Download(args...) {
 			if status.Error != nil {
