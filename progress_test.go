@@ -10,7 +10,7 @@ import (
 func TestProgress_FromScratch(t *testing.T) {
 	tmp := t.TempDir()
 	name := filepath.Join(tmp, "chunk.zip")
-	p, err := newProgress(name, "https://test.etc/chunk.zip", 5, 3, false)
+	p, err := newProgress(name, tmp, "https://test.etc/chunk.zip", 5, 3, false)
 	if err != nil {
 		t.Errorf("expected no error creating the progress, got %s", err)
 	}
@@ -43,7 +43,7 @@ func TestProgress_FromScratch(t *testing.T) {
 func TestProgress_ParallelComplete(t *testing.T) {
 	tmp := t.TempDir()
 	name := filepath.Join(tmp, "chunk.zip")
-	p, err := newProgress(name, "https://test.etc/chunk.zip", 5, 2048, false)
+	p, err := newProgress(name, tmp, "https://test.etc/chunk.zip", 5, 2048, false)
 	if err != nil {
 		t.Errorf("expected no error creating the progress, got %s", err)
 	}
@@ -74,14 +74,14 @@ func TestProgress_ParallelComplete(t *testing.T) {
 func TestProgress_FromFile(t *testing.T) {
 	tmp := t.TempDir()
 	name := filepath.Join(tmp, "chunk.zip")
-	old, err := newProgress(name, "https://test.etc/chunk.zip", 5, 3, false)
+	old, err := newProgress(name, tmp, "https://test.etc/chunk.zip", 5, 3, false)
 	if err != nil {
 		t.Errorf("expected no error creating the old progress, got %s", err)
 	}
 	old.done(1, 3)
 	old.close()
 
-	p, err := newProgress(name, "https://test.etc/chunk.zip", 5, 3, false)
+	p, err := newProgress(name, tmp, "https://test.etc/chunk.zip", 5, 3, false)
 	if err != nil {
 		t.Errorf("expected no error creating the progress, got %s", err)
 	}
@@ -111,14 +111,14 @@ func TestProgress_FromFile(t *testing.T) {
 func TestProgress_FromFileWithInvalidChunkSize(t *testing.T) {
 	tmp := t.TempDir()
 	name := filepath.Join(tmp, "chunk.zip")
-	old, err := newProgress(name, "https://test.etc/chunk.zip", 5, 3, false)
+	old, err := newProgress(name, tmp, "https://test.etc/chunk.zip", 5, 3, false)
 	if err != nil {
 		t.Errorf("expected no error creating the old progress, got %s", err)
 	}
 	old.done(1, 3)
 	old.close()
 
-	if _, err := newProgress(name, "https://test.etc/chunk.zip", 10, 3, false); err == nil {
+	if _, err := newProgress(name, tmp, "https://test.etc/chunk.zip", 10, 3, false); err == nil {
 		t.Error("expected error creating the progress with different chunk size")
 	}
 }
@@ -126,14 +126,14 @@ func TestProgress_FromFileWithInvalidChunkSize(t *testing.T) {
 func TestProgress_FromFileWithRestart(t *testing.T) {
 	tmp := t.TempDir()
 	name := filepath.Join(tmp, "chunk.zip")
-	old, err := newProgress(name, "https://test.etc/chunk.zip", 5, 3, false)
+	old, err := newProgress(name, tmp, "https://test.etc/chunk.zip", 5, 3, false)
 	if err != nil {
 		t.Errorf("expected no error creating the old progress, got %s", err)
 	}
 	old.done(1, 3)
 	old.close()
 
-	p, err := newProgress(name, "https://test.etc/chunk.zip", 10, 3, true)
+	p, err := newProgress(name, tmp, "https://test.etc/chunk.zip", 10, 3, true)
 	if err != nil {
 		t.Errorf("expected no error creating the progress, got %s", err)
 	}
