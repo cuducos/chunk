@@ -254,7 +254,7 @@ func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, ch
 	chunks := d.chunks(t)
 	p, err := newProgress(s.DownloadedFilePath, d.ProgressDir, s.URL, d.ChunkSize, len(chunks), d.RestartDownloads)
 	if err != nil {
-		s.Error = fmt.Errorf("could not creat a progress file: %w", err)
+		s.Error = fmt.Errorf("could not create a progress file: %w", err)
 		ch <- s
 		return
 	}
