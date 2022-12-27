@@ -11,7 +11,7 @@ Chunk is a download tool for slow and unstable servers.
 
 ### CLI
 
-Install it with `go install github.com/cuducos/chunk` then:
+Install it with `go install github.com/cuducos/chunk/cmd/chunk@latest` then:
 
 ```console
 $ chunk <URLs>
