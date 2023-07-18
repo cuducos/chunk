@@ -48,6 +48,7 @@ var rootCmd = &cobra.Command{
 		chunk.ChunkSize = chunkSize
 		chunk.RestartDownloads = restartDownloads
 		chunk.ProgressDir = progressDir
+		chunk.UserAgent = userAgent
 		prog := newProgress()
 		for status := range chunk.Download(args...) {
 			if status.Error != nil {
@@ -69,6 +70,7 @@ var (
 	waitBetweenRetries   time.Duration
 	restartDownloads     bool
 	progressDir          string
+	userAgent            string
 )
 
 func init() {
@@ -86,6 +88,7 @@ func init() {
 		"",
 		fmt.Sprintf("directory where to track progress; %s under user's home directory if blank, or CHUNK_DIR environment variable", chunk.DefaultChunkDir),
 	)
+	rootCmd.Flags().StringVarP(&userAgent, "user-agent", "u", chunk.DefaultUserAgent, "user agent to use in HTTP requests")
 }
 
 func main() {

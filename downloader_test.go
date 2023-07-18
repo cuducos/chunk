@@ -299,6 +299,21 @@ func TestDownload_Chunks(t *testing.T) {
 	}
 }
 
+func TestGetDownload_WithUserAgent(t *testing.T) {
+	ua := "Answer/42.0"
+	s := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.UserAgent() != ua {
+				t.Errorf("expected user-agent to be %s, got %s", ua, r.UserAgent())
+			}
+		},
+	))
+	defer s.Close()
+	d := DefaultDownloader()
+	d.UserAgent = ua
+	<-d.Download(s.URL)
+}
+
 func TestGetDownloadSize_ContentLength(t *testing.T) {
 	s := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {

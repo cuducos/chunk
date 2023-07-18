@@ -22,6 +22,7 @@ const (
 	DefaultChunkSize            = 8192
 	DefaultWaitRetry            = 1 * time.Second
 	DefaultRestartDownload      = false
+	DefaultUserAgent            = ""
 )
 
 // DownloadStatus is the data propagated via the channel sent back to the user
@@ -99,6 +100,10 @@ type Downloader struct {
 	// ProgressDir is the directory where Chunk keeps track of each chunk
 	// downloaded of each file.
 	ProgressDir string
+
+	// UserAgent is the user agent used for all requests. If not set, no
+	// user agent is sent.
+	UserAgent string
 }
 
 type chunk struct{ start, end int64 }
@@ -110,6 +115,9 @@ func (d *Downloader) downloadChunkWithContext(ctx context.Context, u string, c c
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating the request for %s: %w", u, err)
+	}
+	if d.UserAgent != "" {
+		req.Header.Set("User-Agent", d.UserAgent)
 	}
 	req.Header.Set("Range", c.rangeHeader())
 	resp, err := d.Client.Do(req)
@@ -162,6 +170,9 @@ func (d *Downloader) getDownloadSize(ctx context.Context, u string) (int64, erro
 			req, err := http.NewRequestWithContext(ctx, http.MethodHead, u, nil)
 			if err != nil {
 				return fmt.Errorf("creating the request for %s: %w", u, err)
+			}
+			if d.UserAgent != "" {
+				req.Header.Add("User-Agent", d.UserAgent)
 			}
 			resp, err := d.Client.Do(req)
 			if err != nil {
