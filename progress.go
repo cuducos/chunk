@@ -17,7 +17,6 @@ import (
 const DefaultChunkDir = ".chunk"
 
 // get the chunk directory under user's home directory
-// TODO: make it configurable (maybe an envvar?)
 func getChunkProgressDir(dir string) (string, error) {
 	if dir == "" {
 		dir = os.Getenv("CHUNK_DIR")
