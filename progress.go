@@ -16,7 +16,7 @@ import (
 // default. It can be replaced by the environment variable CHUNK_DIR.
 const DefaultChunkDir = ".chunk"
 
-// get the chunk directory under user's home directory
+// get the chunk directory under user's home directory or using the envvar
 func getChunkProgressDir(dir string) (string, error) {
 	if dir == "" {
 		dir = os.Getenv("CHUNK_DIR")
@@ -46,7 +46,7 @@ type progress struct {
 	Chunks    []int64
 }
 
-// trues to loads a download progress from a file
+// it loads a download progress from a file if restart is set to false
 func (p *progress) load(restart bool) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()

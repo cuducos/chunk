@@ -296,7 +296,7 @@ func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, ch
 			defer urlDownload.Done()
 			b, err := d.downloadChunk(ctx, url, c)
 			if err != nil {
-				s.Error = fmt.Errorf("error downloadinf chunk #%d: %w", idx+1, err)
+				s.Error = fmt.Errorf("error downloading chunk #%d: %w", idx+1, err)
 				ch <- s
 				return
 			}
