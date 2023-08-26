@@ -235,6 +235,39 @@ func TestDownload_Retry(t *testing.T) {
 	}
 }
 
+func TestDownload_ReportPreviouslyDownloadedBytes(t *testing.T) {
+	tmp := t.TempDir()
+	firstChunk := func(url string) DownloadStatus {
+		d := Downloader{
+			OutputDir:            tmp,
+			MaxRetries:           1,
+			ConcurrencyPerServer: 1,
+			ChunkSize:            3,
+		}
+		ch := d.Download(url)
+		<-ch // discard the first status (just the file size)
+		return <-ch
+	}
+
+	// first download attempt (with server up)
+	url, first := func() (string, DownloadStatus) {
+		s := httptest.NewServer(http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprint(w, "42")
+			},
+		))
+		defer s.Close()
+		got := firstChunk(s.URL)
+		return s.URL, got
+	}()
+
+	// second download attempt (with server down)
+	second := firstChunk(url)
+	if first.DownloadedFileBytes != second.DownloadedFileBytes {
+		t.Errorf("expected the same number of downloaded bytes, got %d and %d", first.DownloadedFileBytes, second.DownloadedFileBytes)
+	}
+}
+
 func TestDownloadWithContext_ErrorUserTimeout(t *testing.T) {
 	userTimeout := 250 * time.Millisecond // please note that the user timeout is less than the timeout per chunk.
 	timeout := 10 * userTimeout

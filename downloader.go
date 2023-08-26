@@ -289,6 +289,8 @@ func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, ch
 			return
 		}
 		if !pending {
+			s.DownloadedFileBytes = atomic.AddInt64(&downloadedBytes, c.size())
+			ch <- s
 			continue
 		}
 		urlDownload.Add(1)
