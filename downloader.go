@@ -54,7 +54,7 @@ func (s *DownloadStatus) IsFinished() bool {
 
 // Downloader can be configured by the user before starting the download using
 // the following fields. This configurations impacts how the download will be
-// handled, including retries, amoutn of requets, and size of each request, for
+// handled, including retries, amount of requests, and size of each request, for
 // example.
 type Downloader struct {
 	// OutputDir is where the downloaded files will be saved.  If not set,
@@ -76,7 +76,8 @@ type Downloader struct {
 	// MaxParallelDownloadsPerServer controls the max number of concurrent
 	// connections opened to the same server. If all the URLs are from the same
 	// server this is the total of concurrent connections. If the user is downloading
-	// files from different servers, this limit is applied to each server idependently.
+	// files from different servers, this limit is applied to each server
+	// independently.
 	ConcurrencyPerServer int
 
 	// MaxRetriesPerChunk is the maximum amount of retries for each HTTP request
@@ -94,7 +95,7 @@ type Downloader struct {
 	WaitRetry time.Duration
 
 	// RestartDownloads controls whether or not to continue the download of
-	// previous download attempts, skipping chunks alreadt downloaded.
+	// previous download attempts, skipping chunks already downloaded.
 	RestartDownloads bool
 
 	// ProgressDir is the directory where Chunk keeps track of each chunk
@@ -348,7 +349,7 @@ func (d *Downloader) Download(urls ...string) <-chan DownloadStatus {
 	return d.DownloadWithContext(context.Background(), urls...)
 }
 
-// NewDownloader creates a downloader with the defalt configuration. Check
+// NewDownloader creates a downloader with the default configuration. Check
 // the constants in this package for their values.
 func DefaultDownloader() *Downloader {
 	dir, err := os.Getwd()

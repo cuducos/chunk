@@ -166,7 +166,7 @@ func TestDownload_ZIPArchive(t *testing.T) {
 		t.Errorf("expected no error reading archived file, got %s", err)
 	}
 	if !bytes.Equal(expected, b.Bytes()) {
-		t.Error("archived contents differ from expected") // not printing becasuse it's a lot of data
+		t.Error("archived contents differ from expected") // not printing because it's a lot of data
 	}
 }
 
