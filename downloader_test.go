@@ -75,7 +75,7 @@ func TestDownload_OkWithDefaultDownloader(t *testing.T) {
 
 	d := DefaultDownloader()
 	d.OutputDir = t.TempDir()
-	ch := d.Download(s.URL)
+	ch := d.Download(s.URL + "/My%20File.txt")
 	<-ch // discard the first status (just the file size)
 	got := <-ch
 	defer os.Remove(got.DownloadedFilePath)
@@ -83,11 +83,14 @@ func TestDownload_OkWithDefaultDownloader(t *testing.T) {
 	if got.Error != nil {
 		t.Errorf("invalid error. want:nil got:%q", got.Error)
 	}
-	if got.URL != s.URL {
-		t.Errorf("invalid URL. want:%s got:%s", s.URL, got.URL)
+	if got.URL != s.URL+"/My%20File.txt" {
+		t.Errorf("invalid URL. want:%s got:%s", s.URL+"/My%20File.txt", got.URL)
 	}
 	if got.DownloadedFileBytes != 2 {
 		t.Errorf("invalid DownloadedFileBytes. want:2 got:%d", got.DownloadedFileBytes)
+	}
+	if !strings.HasSuffix(got.DownloadedFilePath, "My File.txt") {
+		t.Errorf("expected DownloadedFilePath to enfd with My File.txt, got %s", got.DownloadedFilePath)
 	}
 	if got.FileSizeBytes != 2 {
 		t.Errorf("invalid FileSizeBytes. want:2 got:%d", got.FileSizeBytes)

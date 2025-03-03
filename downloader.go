@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -246,10 +247,14 @@ func (d *Downloader) chunks(t int64) []chunk {
 	return c
 }
 
-func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, ch chan<- DownloadStatus) {
-	path := filepath.Join(d.OutputDir, filepath.Base(url))
-	s := DownloadStatus{URL: url, DownloadedFilePath: path}
-	t, err := d.getDownloadSize(ctx, url)
+func (d *Downloader) prepareAndStartDownload(ctx context.Context, u string, ch chan<- DownloadStatus) {
+	n, err := url.PathUnescape(filepath.Base(u))
+	if err != nil {
+		n = filepath.Base(u)
+	}
+	path := filepath.Join(d.OutputDir, n)
+	s := DownloadStatus{URL: u, DownloadedFilePath: path}
+	t, err := d.getDownloadSize(ctx, u)
 	if err != nil {
 		s.Error = fmt.Errorf("error getting file size: %w", err)
 		ch <- s
@@ -297,7 +302,7 @@ func (d *Downloader) prepareAndStartDownload(ctx context.Context, url string, ch
 		urlDownload.Add(1)
 		go func(c chunk, idx int, s DownloadStatus) {
 			defer urlDownload.Done()
-			b, err := d.downloadChunk(ctx, url, c)
+			b, err := d.downloadChunk(ctx, u, c)
 			if err != nil {
 				s.Error = fmt.Errorf("error downloading chunk #%d: %w", idx+1, err)
 				ch <- s
