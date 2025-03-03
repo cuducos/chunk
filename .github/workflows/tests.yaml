@@ -6,12 +6,11 @@ jobs:
       fail-fast: false
       matrix:
         os: ["windows-latest", "ubuntu-latest", "macOS-latest"]
-        go: ["1.18.x", "1.19.x"]
+        go: ["1.23.x", "1.24.x"]
     runs-on: ${{ matrix.os }}
-
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
+      - uses: actions/checkout@v4
+      - uses: WillAbides/setup-go-faster@v1.14.0
         with:
           go-version: ${{ matrix.go }}
       - run: "go test --race ."

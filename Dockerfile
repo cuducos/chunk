@@ -1,4 +1,4 @@
-FROM golang:1.19-bullseye as build
+FROM golang:1.24-bullseye as build
 WORKDIR /chunk
 COPY go.* .
 RUN go mod download
