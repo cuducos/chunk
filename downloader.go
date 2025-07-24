@@ -128,7 +128,7 @@ func (d *Downloader) downloadChunkWithContext(ctx context.Context, u string, c c
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("got http response %s from %s: %w", resp.Status, u, err)
+		return nil, fmt.Errorf("got http response %s from %s", resp.Status, u)
 	}
 	var b bytes.Buffer
 	_, err = b.ReadFrom(resp.Body)
