@@ -3,7 +3,7 @@ module github.com/cuducos/chunk
 go 1.23
 
 require (
-	github.com/avast/retry-go/v4 v4.6.1
+	github.com/avast/retry-go/v4 v4.7.0
 	github.com/spf13/cobra v1.10.1
 )
 
