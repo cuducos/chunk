@@ -9,9 +9,3 @@ $ gofmt -w ./
 $ staticcheck ./...
 $ go test -race ./...
 ```
-
-To make it easy for you, we have pre-commit hooks set up:
-
-```console
-$ git config core.hooksPath .githooks
-```
