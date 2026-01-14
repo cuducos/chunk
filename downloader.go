@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -126,7 +127,11 @@ func (d *Downloader) downloadChunkWithContext(ctx context.Context, u string, c c
 	if err != nil {
 		return nil, fmt.Errorf("error sending a get http request to %s: %w", u, err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			slog.Warn("error closing HTTP response body", "url", u, "chunk", c.rangeHeader(), "error", err)
+		}
+	}()
 	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("got http response %s from %s", resp.Status, u)
 	}
@@ -193,7 +198,11 @@ func (d *Downloader) getDownloadSize(ctx context.Context, u string) (int64, erro
 		return 0, fmt.Errorf("error sending get http request to %s: %w", u, err)
 	}
 	resp := <-ch
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			slog.Warn("error closing HTTP response body", "url", u, "error", err)
+		}
+	}()
 	if resp.ContentLength <= 0 {
 		var s int64
 		r := strings.TrimSpace(resp.Header.Get("Content-Range"))
@@ -201,7 +210,9 @@ func (d *Downloader) getDownloadSize(ctx context.Context, u string) (int64, erro
 			return 0, fmt.Errorf("could not get content length for %s", u)
 		}
 		p := strings.Split(r, "/")
-		fmt.Sscan(p[len(p)-1], &s)
+		if _, err := fmt.Sscan(p[len(p)-1], &s); err != nil {
+			return 0, fmt.Errorf("error parsing content range for %s: %w", u, err)
+		}
 		return s, nil
 	}
 	return resp.ContentLength, nil
@@ -278,8 +289,12 @@ func (d *Downloader) prepareAndStartDownload(ctx context.Context, u string, ch c
 	var urlDownload sync.WaitGroup
 	defer func() {
 		urlDownload.Wait()
-		p.close()
-		f.Close()
+		if err := p.close(); err != nil {
+			slog.Warn("error closing progress file", "url", s.URL, "path", s.DownloadedFilePath, "error", err)
+		}
+		if err := f.Close(); err != nil {
+			slog.Error("error closing downloaded file", "url", s.URL, "path", s.DownloadedFilePath, "error", err)
+		}
 	}()
 	if err := f.Truncate(int64(t)); err != nil {
 		s.Error = fmt.Errorf("error truncating %s to %d: %w", path, t, err)

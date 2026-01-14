@@ -78,8 +78,12 @@ func TestProgress_FromFile(t *testing.T) {
 	if err != nil {
 		t.Errorf("expected no error creating the old progress, got %s", err)
 	}
-	old.done(1, 3)
-	old.close()
+	if err := old.done(1, 3); err != nil {
+		t.Errorf("failed to mark chunk done: %v", err)
+	}
+	if err := old.close(); err != nil {
+		t.Errorf("failed to close progress: %v", err)
+	}
 
 	p, err := newProgress(name, tmp, "https://test.etc/chunk.zip", 5, 3, false)
 	if err != nil {
@@ -115,8 +119,12 @@ func TestProgress_FromFileWithInvalidChunkSize(t *testing.T) {
 	if err != nil {
 		t.Errorf("expected no error creating the old progress, got %s", err)
 	}
-	old.done(1, 3)
-	old.close()
+	if err := old.done(1, 3); err != nil {
+		t.Errorf("failed to mark chunk done: %v", err)
+	}
+	if err := old.close(); err != nil {
+		t.Errorf("failed to close progress: %v", err)
+	}
 
 	if _, err := newProgress(name, tmp, "https://test.etc/chunk.zip", 10, 3, false); err == nil {
 		t.Error("expected error creating the progress with different chunk size")
@@ -130,8 +138,12 @@ func TestProgress_FromFileWithRestart(t *testing.T) {
 	if err != nil {
 		t.Errorf("expected no error creating the old progress, got %s", err)
 	}
-	old.done(1, 3)
-	old.close()
+	if err := old.done(1, 3); err != nil {
+		t.Errorf("failed to mark chunk done: %v", err)
+	}
+	if err := old.close(); err != nil {
+		t.Errorf("failed to close progress: %v", err)
+	}
 
 	p, err := newProgress(name, tmp, "https://test.etc/chunk.zip", 10, 3, true)
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"encoding/gob"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -64,7 +65,11 @@ func (p *progress) load(restart bool) error {
 	if err != nil {
 		return fmt.Errorf("error opening %s: %w", p.path, err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			slog.Warn("error closing progress file", "path", p.path, "error", err)
+		}
+	}()
 	d := gob.NewDecoder(f)
 	var got progress
 	if err := d.Decode(&got); err != nil {
@@ -109,7 +114,11 @@ func (p *progress) done(idx int, bytes int64) error {
 	if err != nil {
 		return fmt.Errorf("error opening progress file %s: %w", p.path, err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			slog.Warn("error closing progress file", "path", p.path, "error", err)
+		}
+	}()
 	e := gob.NewEncoder(f)
 	if err := e.Encode(p); err != nil {
 		return fmt.Errorf("error encoding progress file %s: %w", p.path, err)

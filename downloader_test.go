@@ -68,7 +68,9 @@ func TestDownload_OkWithDefaultDownloader(t *testing.T) {
 				w.Header().Add("Content-Length", "2")
 				return
 			}
-			fmt.Fprint(w, "42")
+			if _, err := fmt.Fprint(w, "42"); err != nil {
+				t.Errorf("failed to write response: %v", err)
+			}
 		},
 	))
 	defer s.Close()
@@ -78,7 +80,11 @@ func TestDownload_OkWithDefaultDownloader(t *testing.T) {
 	ch := d.Download(s.URL + "/My%20File.txt")
 	<-ch // discard the first status (just the file size)
 	got := <-ch
-	defer os.Remove(got.DownloadedFilePath)
+	defer func() {
+		if err := os.Remove(got.DownloadedFilePath); err != nil {
+			t.Errorf("failed to remove test file: %v", err)
+		}
+	}()
 
 	if got.Error != nil {
 		t.Errorf("invalid error. want:nil got:%q", got.Error)
@@ -121,13 +127,21 @@ func TestDownload_ZIPArchive(t *testing.T) {
 		if err != nil {
 			t.Errorf("expected no error creating zip archive, got %s", err)
 		}
-		defer z.Close()
+		defer func() {
+			if err := z.Close(); err != nil {
+				t.Errorf("failed to close zip file: %v", err)
+			}
+		}()
 		w := zip.NewWriter(z)
 		f, err := w.Create("file.txt")
 		if err != nil {
 			t.Errorf("expected no error creating archived file, got %s", err)
 		}
-		defer w.Close()
+		defer func() {
+			if err := w.Close(); err != nil {
+				t.Errorf("failed to close zip writer: %v", err)
+			}
+		}()
 		if _, err := f.Write(expected); err != nil {
 			t.Errorf("expected no error writing to archived file, got %s", err)
 		}
@@ -143,7 +157,13 @@ func TestDownload_ZIPArchive(t *testing.T) {
 
 	// download
 	var got string
-	defer os.Remove(got)
+	defer func() {
+		if got != "" {
+			if err := os.Remove(got); err != nil {
+				t.Errorf("failed to remove test file: %v", err)
+			}
+		}
+	}()
 	d := DefaultDownloader()
 	d.OutputDir = t.TempDir()
 	for g := range d.Download(s.URL + "/archive.zip") {
@@ -158,12 +178,20 @@ func TestDownload_ZIPArchive(t *testing.T) {
 	if err != nil {
 		t.Errorf("expected no error opening downloaded zip archive %s, got %s", got, err)
 	}
-	defer a.Close()
+	defer func() {
+		if err := a.Close(); err != nil {
+			t.Errorf("failed to close zip reader: %v", err)
+		}
+	}()
 	r, err := a.Open("file.txt")
 	if err != nil {
 		t.Errorf("expected no error reading downloaded zip archive, got %s", err)
 	}
-	defer r.Close()
+	defer func() {
+		if err := r.Close(); err != nil {
+			t.Errorf("failed to close zip file reader: %v", err)
+		}
+	}()
 	var b bytes.Buffer
 	if _, err := io.Copy(&b, r); err != nil {
 		t.Errorf("expected no error reading archived file, got %s", err)
@@ -193,7 +221,9 @@ func TestDownload_Retry(t *testing.T) {
 					if atomic.CompareAndSwapInt32(&attempts, 0, 1) {
 						tc.proc(w)
 					}
-					fmt.Fprint(w, "42")
+					if _, err := fmt.Fprint(w, "42"); err != nil {
+						t.Errorf("failed to write response: %v", err)
+					}
 				},
 			))
 			defer s.Close()
@@ -256,7 +286,9 @@ func TestDownload_ReportPreviouslyDownloadedBytes(t *testing.T) {
 	url, first := func() (string, DownloadStatus) {
 		s := httptest.NewServer(http.HandlerFunc(
 			func(w http.ResponseWriter, r *http.Request) {
-				fmt.Fprint(w, "42")
+				if _, err := fmt.Fprint(w, "42"); err != nil {
+					t.Errorf("failed to write response: %v", err)
+				}
 			},
 		))
 		defer s.Close()
@@ -353,7 +385,9 @@ func TestGetDownload_WithUserAgent(t *testing.T) {
 func TestGetDownloadSize_ContentLength(t *testing.T) {
 	s := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
-			fmt.Fprint(w, "Test")
+			if _, err := fmt.Fprint(w, "Test"); err != nil {
+				t.Errorf("failed to write response: %v", err)
+			}
 		},
 	))
 	defer s.Close()
@@ -377,7 +411,9 @@ func TestGetDownloadSize_WithRetry(t *testing.T) {
 				w.WriteHeader(http.StatusTooManyRequests)
 				return
 			}
-			fmt.Fprint(w, "Test")
+			if _, err := fmt.Fprint(w, "Test"); err != nil {
+				t.Errorf("failed to write response: %v", err)
+			}
 		},
 	))
 	defer s.Close()
@@ -397,7 +433,9 @@ func TestGetDownloadSize_ContentRange(t *testing.T) {
 	s := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Range", "bytes 1-10/123")
-			fmt.Fprint(w, "")
+			if _, err := fmt.Fprint(w, ""); err != nil {
+				t.Errorf("failed to write response: %v", err)
+			}
 		},
 	))
 	defer s.Close()
@@ -428,7 +466,9 @@ func TestGetDownloadSize_ErrorInvalidURL(t *testing.T) {
 func TestGetDownloadSize_NoContent(t *testing.T) {
 	s := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
-			fmt.Fprint(w, "")
+			if _, err := fmt.Fprint(w, ""); err != nil {
+				t.Errorf("failed to write response: %v", err)
+			}
 		},
 	))
 	defer s.Close()
