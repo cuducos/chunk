@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"math/rand"
 	"net/http"
@@ -68,7 +67,7 @@ func TestDownload_OkWithDefaultDownloader(t *testing.T) {
 				w.Header().Add("Content-Length", "2")
 				return
 			}
-			if _, err := fmt.Fprint(w, "42"); err != nil {
+			if _, err := io.WriteString(w, "42"); err != nil {
 				t.Errorf("failed to write response: %v", err)
 			}
 		},
@@ -117,7 +116,7 @@ func TestDownload_ZIPArchive(t *testing.T) {
 	tmp := t.TempDir()
 	pth := filepath.Join(tmp, "archive.zip")
 	expected := make([]byte, 1_000_000)
-	for i := 0; i < 1_000_000; i++ {
+	for i := range 1_000_000 {
 		expected[i] = byte(97 + rand.Intn(122-97))
 	}
 
@@ -221,7 +220,7 @@ func TestDownload_Retry(t *testing.T) {
 					if atomic.CompareAndSwapInt32(&attempts, 0, 1) {
 						tc.proc(w)
 					}
-					if _, err := fmt.Fprint(w, "42"); err != nil {
+					if _, err := io.WriteString(w, "42"); err != nil {
 						t.Errorf("failed to write response: %v", err)
 					}
 				},
@@ -286,7 +285,7 @@ func TestDownload_ReportPreviouslyDownloadedBytes(t *testing.T) {
 	url, first := func() (string, DownloadStatus) {
 		s := httptest.NewServer(http.HandlerFunc(
 			func(w http.ResponseWriter, r *http.Request) {
-				if _, err := fmt.Fprint(w, "42"); err != nil {
+				if _, err := io.WriteString(w, "42"); err != nil {
 					t.Errorf("failed to write response: %v", err)
 				}
 			},
@@ -385,7 +384,7 @@ func TestGetDownload_WithUserAgent(t *testing.T) {
 func TestGetDownloadSize_ContentLength(t *testing.T) {
 	s := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
-			if _, err := fmt.Fprint(w, "Test"); err != nil {
+			if _, err := io.WriteString(w, "Test"); err != nil {
 				t.Errorf("failed to write response: %v", err)
 			}
 		},
@@ -411,7 +410,7 @@ func TestGetDownloadSize_WithRetry(t *testing.T) {
 				w.WriteHeader(http.StatusTooManyRequests)
 				return
 			}
-			if _, err := fmt.Fprint(w, "Test"); err != nil {
+			if _, err := io.WriteString(w, "Test"); err != nil {
 				t.Errorf("failed to write response: %v", err)
 			}
 		},
@@ -433,7 +432,7 @@ func TestGetDownloadSize_ContentRange(t *testing.T) {
 	s := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Range", "bytes 1-10/123")
-			if _, err := fmt.Fprint(w, ""); err != nil {
+			if _, err := io.WriteString(w, ""); err != nil {
 				t.Errorf("failed to write response: %v", err)
 			}
 		},
@@ -466,7 +465,7 @@ func TestGetDownloadSize_ErrorInvalidURL(t *testing.T) {
 func TestGetDownloadSize_NoContent(t *testing.T) {
 	s := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
-			if _, err := fmt.Fprint(w, ""); err != nil {
+			if _, err := io.WriteString(w, ""); err != nil {
 				t.Errorf("failed to write response: %v", err)
 			}
 		},

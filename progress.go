@@ -172,7 +172,7 @@ func newProgress(path, dir string, url string, chunkSize int64, chunks int, rest
 	if err != nil {
 		return nil, fmt.Errorf("could not get the download absolute path: %w", err)
 	}
-	hash := fmt.Sprintf("%x", md5.Sum([]byte(fmt.Sprintf("%s|%s", url, abs))))
+	hash := fmt.Sprintf("%x", md5.Sum(fmt.Appendf(nil, "%s|%s", url, abs)))
 
 	// file name is a hash of the URL and local file path, plus the file name
 	// in an human-readable way for debugging purposes

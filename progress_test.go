@@ -17,7 +17,7 @@ func TestProgress_FromScratch(t *testing.T) {
 	if err := p.done(1, 3); err != nil {
 		t.Errorf("expected no error marking chunk as done, got %s", err)
 	}
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		got, err := p.shouldDownload(i)
 		if err != nil {
 			t.Errorf("expected no error checking if chunk %d should be downloaded, got %s", i, err)
@@ -49,14 +49,14 @@ func TestProgress_ParallelComplete(t *testing.T) {
 	}
 	var wg sync.WaitGroup
 	errs := make(chan error)
-	for i := 0; i < 2048; i++ {
+	for i := range 2048 {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
 			errs <- p.done(i, 2048)
 		}(i)
 	}
-	for i := 0; i < 2048; i++ {
+	for range 2048 {
 		err := <-errs
 		if err != nil {
 			t.Errorf("expected no error marking chunk as done, got %s", err)
@@ -89,7 +89,7 @@ func TestProgress_FromFile(t *testing.T) {
 	if err != nil {
 		t.Errorf("expected no error creating the progress, got %s", err)
 	}
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		got, err := p.shouldDownload(i)
 		if err != nil {
 			t.Errorf("expected no error checking if chunk %d should be downloaded, got %s", i, err)
@@ -149,7 +149,7 @@ func TestProgress_FromFileWithRestart(t *testing.T) {
 	if err != nil {
 		t.Errorf("expected no error creating the progress, got %s", err)
 	}
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		got, err := p.shouldDownload(i)
 		if err != nil {
 			t.Errorf("expected no error checking if chunk %d should be downloaded, got %s", i, err)

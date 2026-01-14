@@ -245,10 +245,7 @@ func (d *Downloader) chunks(t int64) []chunk {
 	last := t - 1
 	var c []chunk
 	for {
-		end := start + d.ChunkSize - 1
-		if end > last {
-			end = last
-		}
+		end := min(start+d.ChunkSize-1, last)
 		c = append(c, chunk{start, end})
 		if end == last {
 			break
