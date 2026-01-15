@@ -6,16 +6,18 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/user"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+
+	gap "github.com/muesli/go-app-paths"
 )
 
 // DefaultChunkDir is the directory where Chunk keeps track of each chunk
-// downloaded of each file. It us created under the user's home directory by
-// default. It can be replaced by the environment variable CHUNK_DIR.
-const DefaultChunkDir = ".chunk"
+// downloaded of each file. It us created under the user's cache directory
+// by default.
+// It can be replaced by a full path in the environment variable CHUNK_DIR.
+const DefaultChunkDir = "chunk"
 
 // get the chunk directory under user's home directory or using the envvar
 func getChunkProgressDir(dir string) (string, error) {
@@ -23,11 +25,11 @@ func getChunkProgressDir(dir string) (string, error) {
 		dir = os.Getenv("CHUNK_DIR")
 	}
 	if dir == "" {
-		u, err := user.Current()
+		c, err := gap.NewScope(gap.User, "app").CacheDir()
 		if err != nil {
-			return "", fmt.Errorf("could not get current user: %w", err)
+			return "", fmt.Errorf("error getting user home directory: %w", err)
 		}
-		dir = filepath.Join(u.HomeDir, DefaultChunkDir)
+		dir = filepath.Join(c, DefaultChunkDir)
 	}
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", fmt.Errorf("could not create chunk's directory %s: %w", dir, err)
