@@ -3,8 +3,10 @@ package chunk
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -13,8 +15,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/avast/retry-go/v4"
 )
 
 const (
@@ -26,6 +26,18 @@ const (
 	DefaultRestartDownload      = false
 	DefaultUserAgent            = ""
 )
+
+var errChunkTimeout = errors.New("chunk timeout")
+
+func isTimeout(err error) bool {
+	if errors.Is(err, errChunkTimeout) || errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	if err, ok := err.(net.Error); ok && err.Timeout() {
+		return true
+	}
+	return false
+}
 
 // DownloadStatus is the data propagated via the channel sent back to the user
 // and it contains information about the download from each URL.
@@ -115,6 +127,9 @@ func (c chunk) size() int64         { return (c.end + 1) - c.start }
 func (c chunk) rangeHeader() string { return fmt.Sprintf("bytes=%d-%d", c.start, c.end) }
 
 func (d *Downloader) downloadChunkWithContext(ctx context.Context, u string, c chunk) ([]byte, error) {
+	if ctx.Err() != nil { // if context is already done before making request
+		return nil, ctx.Err()
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating the request for %s: %w", u, err)
@@ -143,73 +158,108 @@ func (d *Downloader) downloadChunkWithContext(ctx context.Context, u string, c c
 	return b.Bytes(), nil
 }
 
-func (d *Downloader) downloadChunkWithTimeout(userCtx context.Context, u string, c chunk) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(userCtx, d.Timeout) // need to propagate context, which might contain app-specific data.
+func (d *Downloader) downloadChunkWithTimeout(usrCtx context.Context, u string, c chunk) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(usrCtx, d.Timeout) // need to propagate context, which might contain app-specific data.
 	defer cancel()
-	ch := make(chan []byte)
-	errs := make(chan error)
+
+	type result struct {
+		data []byte
+		err  error
+	}
+	ch := make(chan result, 1)
 	go func() {
 		b, err := d.downloadChunkWithContext(ctx, u, c)
-		if err != nil {
-			errs <- err
-			return
-		}
-		ch <- b
+		ch <- result{b, err}
+		close(ch)
 	}()
+
 	select {
-	case <-userCtx.Done():
-		cancel()
-		return nil, userCtx.Err()
+	case <-usrCtx.Done():
+		return nil, usrCtx.Err()
 	case <-ctx.Done():
-		return nil, fmt.Errorf("request to %s ended due to timeout: %w", u, ctx.Err())
-	case err := <-errs:
-		return nil, fmt.Errorf("request to %s failed: %w", u, err)
-	case b := <-ch:
-		return b, nil
+		if usrCtx.Err() != nil {
+			return nil, usrCtx.Err()
+		}
+		return nil, fmt.Errorf("request to %s ended due to timeout: %w", u, errChunkTimeout)
+	case r := <-ch:
+		if r.err != nil {
+			if usrCtx.Err() != nil {
+				return nil, usrCtx.Err()
+			}
+			if ctx.Err() == context.DeadlineExceeded {
+				return nil, fmt.Errorf("request to %s ended due to timeout: %w", u, errChunkTimeout)
+			}
+			return nil, fmt.Errorf("request to %s failed: %w", u, r.err)
+		}
+		return r.data, nil
 	}
 }
 
 func (d *Downloader) getDownloadSize(ctx context.Context, u string) (int64, error) {
 	ch := make(chan *http.Response, 1)
 	defer close(ch)
-	err := retry.Do(
-		func() error {
-			req, err := http.NewRequestWithContext(ctx, http.MethodHead, u, nil)
-			if err != nil {
-				return fmt.Errorf("creating the request for %s: %w", u, err)
+	var n uint
+	for {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodHead, u, nil)
+		if err != nil {
+			return 0, fmt.Errorf("creating the request for %s: %w", u, err)
+		}
+		if d.UserAgent != "" {
+			req.Header.Add("User-Agent", d.UserAgent)
+		}
+		resp, err := d.Client.Do(req)
+		if err != nil {
+			if ctx.Err() != nil {
+				return 0, ctx.Err()
 			}
-			if d.UserAgent != "" {
-				req.Header.Add("User-Agent", d.UserAgent)
+			if isTimeout(err) {
+				select {
+				case <-ctx.Done():
+					return 0, ctx.Err()
+				case <-time.After(d.WaitRetry):
+					continue
+				}
 			}
-			resp, err := d.Client.Do(req)
-			if err != nil {
-				return fmt.Errorf("dispatching the request for %s: %w", u, err)
+			n++
+			if n > d.MaxRetries {
+				return 0, fmt.Errorf("error sending get http request to %s: %w", u, err)
 			}
-			if resp.StatusCode != 200 {
-				return fmt.Errorf("got unexpected http response status for %s: %s", u, resp.Status)
+			select {
+			case <-ctx.Done():
+				return 0, ctx.Err()
+			case <-time.After(d.WaitRetry):
+				continue
 			}
-			ch <- resp
-			return nil
-		},
-		retry.Attempts(d.MaxRetries),
-		retry.MaxDelay(d.WaitRetry),
-	)
-	if err != nil {
-		return 0, fmt.Errorf("error sending get http request to %s: %w", u, err)
-	}
-	resp := <-ch
-	defer func() {
+		}
 		if err := resp.Body.Close(); err != nil {
 			slog.Warn("error closing HTTP response body", "url", u, "error", err)
 		}
-	}()
+		if resp.StatusCode != 200 {
+			n++
+			if n >= d.MaxRetries {
+				return 0, fmt.Errorf("got unexpected http response status for %s: %s", u, resp.Status)
+			}
+			select {
+			case <-ctx.Done():
+				return 0, ctx.Err()
+			case <-time.After(d.WaitRetry):
+				continue
+			}
+		}
+		ch <- resp
+		break
+	}
+	resp := <-ch
 	if resp.ContentLength <= 0 {
-		var s int64
 		r := strings.TrimSpace(resp.Header.Get("Content-Range"))
 		if r == "" {
 			return 0, fmt.Errorf("could not get content length for %s", u)
 		}
 		p := strings.Split(r, "/")
+		var s int64
 		if _, err := fmt.Sscan(p[len(p)-1], &s); err != nil {
 			return 0, fmt.Errorf("error parsing content range for %s: %w", u, err)
 		}
@@ -219,25 +269,37 @@ func (d *Downloader) getDownloadSize(ctx context.Context, u string) (int64, erro
 }
 
 func (d *Downloader) downloadChunk(ctx context.Context, u string, c chunk) ([]byte, error) {
-	ch := make(chan []byte, 1)
-	defer close(ch)
-	err := retry.Do(
-		func() error {
-			b, err := d.downloadChunkWithTimeout(ctx, u, c)
-			if err != nil {
-				return err
+	var n uint
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		b, err := d.downloadChunkWithTimeout(ctx, u, c)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
 			}
-			ch <- b
-			return nil
-		},
-		retry.Attempts(d.MaxRetries),
-		retry.MaxDelay(d.WaitRetry),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("error downloading %s: %w", u, err)
+			if isTimeout(err) {
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(d.WaitRetry):
+					continue
+				}
+			}
+			n++
+			if n >= d.MaxRetries {
+				return nil, fmt.Errorf("error downloading %s: %w", u, err)
+			}
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(d.WaitRetry):
+				continue
+			}
+		}
+		return b, nil
 	}
-	b := <-ch
-	return b, nil
 }
 
 func (d *Downloader) chunks(t int64) []chunk {
@@ -307,7 +369,7 @@ func (d *Downloader) prepareAndStartDownload(ctx context.Context, u string, ch c
 			return
 		}
 		if !pending {
-			s.DownloadedFileBytes = atomic.AddInt64(&downloadedBytes, c.size())
+			s.DownloadedFileBytes = atomic.LoadInt64(&downloadedBytes)
 			ch <- s
 			continue
 		}

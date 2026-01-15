@@ -2,10 +2,7 @@ module github.com/cuducos/chunk
 
 go 1.25
 
-require (
-	github.com/avast/retry-go/v4 v4.7.0
-	github.com/spf13/cobra v1.10.1
-)
+require github.com/spf13/cobra v1.10.1
 
 require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect

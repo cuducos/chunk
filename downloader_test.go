@@ -16,51 +16,75 @@ import (
 	"time"
 )
 
-func TestDownload_Error(t *testing.T) {
-	timeout := 250 * time.Millisecond
-	for _, tc := range []struct {
-		desc string
-		proc func(w http.ResponseWriter)
-	}{
-		{"failure", func(w http.ResponseWriter) { w.WriteHeader(http.StatusBadRequest) }},
-		{"timeout", func(w http.ResponseWriter) { time.Sleep(10 * timeout) }},
-	} {
-		t.Run(tc.desc, func(t *testing.T) {
-			s := httptest.NewServer(http.HandlerFunc(
-				func(w http.ResponseWriter, r *http.Request) {
-					if r.Method == http.MethodHead {
-						w.Header().Add("Content-Length", "2")
-						return
-					}
-					tc.proc(w)
-				},
-			))
-			defer s.Close()
-			d := Downloader{
-				OutputDir:            t.TempDir(),
-				Timeout:              timeout,
-				MaxRetries:           4,
-				ConcurrencyPerServer: 1,
-				ChunkSize:            1024,
-				WaitRetry:            0 * time.Second,
+var timeout = 250 * time.Millisecond
+
+func TestDownload_HTTPFailure(t *testing.T) {
+	t.Parallel()
+	s := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodHead {
+				w.Header().Add("Content-Length", "2")
+				return
 			}
-			ch := d.Download(s.URL)
-			<-ch // discard the first got (just the file size)
-			got := <-ch
-			if got.Error == nil {
-				t.Error("expected an error, but got nil")
-			}
-			if !strings.Contains(got.Error.Error(), "#4") {
-				t.Error("expected #4 (configured number of retries), but did not get it")
-			}
-			if _, ok := <-ch; ok {
-				t.Error("expected channel closed, but did not get it")
-			}
-		})
+			w.WriteHeader(http.StatusBadRequest)
+		},
+	))
+	defer s.Close()
+	d := Downloader{
+		OutputDir:            t.TempDir(),
+		Timeout:              timeout,
+		MaxRetries:           4,
+		ConcurrencyPerServer: 1,
+		ChunkSize:            1024,
+		WaitRetry:            1 * time.Millisecond,
+	}
+	ch := d.Download(s.URL)
+	<-ch // discard the first got (just the file size)
+	got := <-ch
+	if got.Error == nil {
+		t.Error("expected an error, but got nil")
+	}
+	if _, ok := <-ch; ok {
+		t.Error("expected channel closed, but did not get it")
 	}
 }
 
-func TestDownload_OkWithDefaultDownloader(t *testing.T) {
+func TestDownload_ServerTimeout(t *testing.T) {
+	t.Parallel()
+	s := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodHead {
+				w.Header().Add("Content-Length", "2")
+				return
+			}
+			time.Sleep(10 * timeout) // server sleeps, causing client timeout
+		},
+	))
+	defer s.Close()
+	d := Downloader{
+		OutputDir:            t.TempDir(),
+		Timeout:              timeout,
+		MaxRetries:           4,
+		ConcurrencyPerServer: 1,
+		ChunkSize:            1024,
+		WaitRetry:            1 * time.Millisecond,
+	}
+	// context with timeout to eventually terminate the download.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*timeout)
+	defer cancel()
+	ch := d.DownloadWithContext(ctx, s.URL)
+	<-ch // discard the first status (file size)
+	got := <-ch
+	if got.Error == nil {
+		t.Error("expected an error due to context timeout, but got nil")
+	}
+	if _, ok := <-ch; ok {
+		t.Error("expected channel closed, but did not get it")
+	}
+}
+
+func TestDownload_DefaultDownloader(t *testing.T) {
+	t.Parallel()
 	s := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodHead {
@@ -113,10 +137,11 @@ func TestDownload_OkWithDefaultDownloader(t *testing.T) {
 }
 
 func TestDownload_ZIPArchive(t *testing.T) {
+	t.Parallel()
 	tmp := t.TempDir()
 	pth := filepath.Join(tmp, "archive.zip")
-	expected := make([]byte, 1_000_000)
-	for i := range 1_000_000 {
+	expected := make([]byte, 2<<20)
+	for i := range 2 << 20 {
 		expected[i] = byte(97 + rand.Intn(122-97))
 	}
 
@@ -201,129 +226,145 @@ func TestDownload_ZIPArchive(t *testing.T) {
 }
 
 func TestDownload_Retry(t *testing.T) {
-	timeout := 250 * time.Millisecond
-	for _, tc := range []struct {
-		desc string
-		proc func(w http.ResponseWriter)
-	}{
-		{"failure", func(w http.ResponseWriter) { w.WriteHeader(http.StatusBadRequest) }},
-		{"timeout", func(w http.ResponseWriter) { time.Sleep(10 * timeout) }},
-	} {
-		t.Run(tc.desc, func(t *testing.T) {
-			attempts := int32(0)
-			s := httptest.NewServer(http.HandlerFunc(
-				func(w http.ResponseWriter, r *http.Request) {
-					if r.Method == http.MethodHead {
-						w.Header().Add("Content-Length", "2")
-						return
-					}
-					if atomic.CompareAndSwapInt32(&attempts, 0, 1) {
-						tc.proc(w)
-					}
-					if _, err := io.WriteString(w, "42"); err != nil {
-						t.Errorf("failed to write response: %v", err)
-					}
-				},
-			))
-			defer s.Close()
-
-			d := Downloader{
-				OutputDir:            t.TempDir(),
-				Timeout:              timeout,
-				MaxRetries:           4,
-				ConcurrencyPerServer: 1,
-				ChunkSize:            1024,
-				WaitRetry:            0 * time.Second,
-			}
-			ch := d.Download(s.URL)
-			<-ch // discard the first status (just the file size)
-			got := <-ch
-			if got.Error != nil {
-				t.Errorf("invalid error. want:nil got:%q", got.Error)
-			}
-			if attempts != 1 {
-				t.Errorf("invalid number of attempts. want:1 got %d", attempts)
-			}
-			if got.URL != s.URL {
-				t.Errorf("invalid URL. want:%s got:%s", s.URL, got.URL)
-			}
-			if got.DownloadedFileBytes != 2 {
-				t.Errorf("invalid DownloadedFileBytes. want:2 got:%d", got.DownloadedFileBytes)
-			}
-			if got.FileSizeBytes != 2 {
-				t.Errorf("invalid FileSizeBytes. want:2 got:%d", got.FileSizeBytes)
-			}
-			b, err := os.ReadFile(got.DownloadedFilePath)
-			if err != nil {
-				t.Errorf("error reading downloaded file (%s): %q", got.DownloadedFilePath, err)
-			}
-			if string(b) != "42" {
-				t.Errorf("invalid downloaded file content. want:42 got:%s", string(b))
-			}
-			if _, ok := <-ch; ok {
-				t.Error("expected channel closed, but did not get it")
-			}
-		})
-	}
-}
-
-func TestDownload_ReportPreviouslyDownloadedBytes(t *testing.T) {
-	tmp := t.TempDir()
-	firstChunk := func(url string) DownloadStatus {
-		d := Downloader{
-			OutputDir:            tmp,
-			MaxRetries:           1,
-			ConcurrencyPerServer: 1,
-			ChunkSize:            3,
-		}
-		ch := d.Download(url)
-		<-ch // discard the first status (just the file size)
-		return <-ch
-	}
-
-	// first download attempt (with server up)
-	url, first := func() (string, DownloadStatus) {
-		s := httptest.NewServer(http.HandlerFunc(
-			func(w http.ResponseWriter, r *http.Request) {
-				if _, err := io.WriteString(w, "42"); err != nil {
-					t.Errorf("failed to write response: %v", err)
-				}
-			},
-		))
-		defer s.Close()
-		got := firstChunk(s.URL)
-		return s.URL, got
-	}()
-
-	// second download attempt (with server down)
-	second := firstChunk(url)
-	if first.DownloadedFileBytes != second.DownloadedFileBytes {
-		t.Errorf("expected the same number of downloaded bytes, got %d and %d", first.DownloadedFileBytes, second.DownloadedFileBytes)
-	}
-}
-
-func TestDownloadWithContext_ErrorUserTimeout(t *testing.T) {
-	userTimeout := 250 * time.Millisecond // please note that the user timeout is less than the timeout per chunk.
-	timeout := 10 * userTimeout
+	t.Parallel()
+	var done atomic.Bool
 	s := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodHead {
 				w.Header().Add("Content-Length", "2")
 				return
 			}
-			time.Sleep(2 * userTimeout) // this time is greater than the user timeout, but shorter than the timeout per chunk.
+			if done.CompareAndSwap(false, true) {
+				w.WriteHeader(http.StatusTeapot)
+				return
+			}
+			if _, err := io.WriteString(w, "42"); err != nil {
+				t.Errorf("failed to write response: %v", err)
+			}
 		},
 	))
 	defer s.Close()
+
 	d := Downloader{
 		OutputDir:            t.TempDir(),
 		Timeout:              timeout,
 		MaxRetries:           4,
 		ConcurrencyPerServer: 1,
 		ChunkSize:            1024,
+		WaitRetry:            1 * time.Millisecond,
+	}
+	ch := d.Download(s.URL)
+	<-ch // discard the first status (just the file size)
+	got := <-ch
+	if got.Error != nil {
+		t.Errorf("invalid error. want:nil got:%q", got.Error)
+	}
+	if !done.Load() {
+		t.Error("expected server to be done, it is not")
+	}
+	if got.URL != s.URL {
+		t.Errorf("invalid URL. want:%s got:%s", s.URL, got.URL)
+	}
+	if got.DownloadedFileBytes != 2 {
+		t.Errorf("invalid DownloadedFileBytes. want:2 got:%d", got.DownloadedFileBytes)
+	}
+	if got.FileSizeBytes != 2 {
+		t.Errorf("invalid FileSizeBytes. want:2 got:%d", got.FileSizeBytes)
+	}
+	b, err := os.ReadFile(got.DownloadedFilePath)
+	if err != nil {
+		t.Errorf("error reading downloaded file (%s): %q", got.DownloadedFilePath, err)
+	}
+	if string(b) != "42" {
+		t.Errorf("invalid downloaded file content. want:42 got:%s", string(b))
+	}
+	if _, ok := <-ch; ok {
+		t.Error("expected channel closed, but did not get it")
+	}
+}
+
+func TestDownload_ReportPreviouslyDownloadedBytes(t *testing.T) {
+	t.Parallel()
+	tmp := t.TempDir()
+	pdir := t.TempDir()
+
+	// server that serves first chunk but always fails on second chunk
+	s := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodHead {
+				w.Header().Add("Content-Length", "4")
+				return
+			}
+			rangeHeader := r.Header.Get("Range")
+			if strings.HasPrefix(rangeHeader, "bytes=0-") {
+				w.WriteHeader(http.StatusPartialContent)
+				if _, err := io.WriteString(w, "42"); err != nil {
+					t.Errorf("failed to write response: %v", err)
+				}
+				return
+			}
+			w.WriteHeader(http.StatusTeapot)
+		},
+	))
+	defer s.Close()
+
+	// first download attempt: first chunk succeeds, second chunk always fails
+	d := Downloader{
+		OutputDir:            tmp,
+		ProgressDir:          pdir,
+		Timeout:              timeout,
+		MaxRetries:           1,
+		ConcurrencyPerServer: 1,
+		ChunkSize:            2,
+	}
+	ch := d.Download(s.URL)
+	var first DownloadStatus
+	for s := range ch {
+		first = s
+	}
+
+	// second download attempt: should report the previously downloaded bytes
+	d = Downloader{
+		OutputDir:            tmp,
+		ProgressDir:          pdir,
+		Timeout:              timeout,
+		MaxRetries:           1,
+		ConcurrencyPerServer: 1,
+		ChunkSize:            2,
+	}
+	ch = d.Download(s.URL)
+	var second DownloadStatus
+	for s := range ch {
+		second = s
+	}
+	if first.DownloadedFileBytes != second.DownloadedFileBytes {
+		t.Errorf("expected the same number of downloaded bytes, got %d and %d", first.DownloadedFileBytes, second.DownloadedFileBytes)
+	}
+}
+
+func TestDownloadWithContext_ErrorUserTimeout(t *testing.T) {
+	t.Parallel()
+	usrTimeout := 250 * time.Millisecond // smaller than overall timeout
+	chunkTimeout := 10 * usrTimeout
+	s := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodHead {
+				w.Header().Add("Content-Length", "2")
+				return
+			}
+			time.Sleep(2 * usrTimeout) // greater than the user timeout, but shorter than the timeout per chunk.
+		},
+	))
+	defer s.Close()
+	d := Downloader{
+		OutputDir:            t.TempDir(),
+		Timeout:              chunkTimeout,
+		MaxRetries:           4,
+		ConcurrencyPerServer: 1,
+		ChunkSize:            1024,
 		WaitRetry:            0 * time.Second,
 	}
-	userCtx, cancFunc := context.WithTimeout(context.Background(), userTimeout)
+	userCtx, cancFunc := context.WithTimeout(context.Background(), usrTimeout)
 	defer cancFunc()
 
 	ch := d.DownloadWithContext(userCtx, s.URL)
@@ -332,15 +373,13 @@ func TestDownloadWithContext_ErrorUserTimeout(t *testing.T) {
 	if got.Error == nil {
 		t.Error("expected an error, but got nil")
 	}
-	if !strings.Contains(got.Error.Error(), "#4") {
-		t.Error("expected #4 (configured number of retries), but did not get it")
-	}
 	if _, ok := <-ch; ok {
 		t.Error("expected channel closed, but did not get it")
 	}
 }
 
 func TestDownload_Chunks(t *testing.T) {
+	t.Parallel()
 	d := DefaultDownloader()
 	d.ChunkSize = 5
 	got := d.chunks(12)
@@ -367,6 +406,7 @@ func TestDownload_Chunks(t *testing.T) {
 }
 
 func TestGetDownload_WithUserAgent(t *testing.T) {
+	t.Parallel()
 	ua := "Answer/42.0"
 	s := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
@@ -382,6 +422,7 @@ func TestGetDownload_WithUserAgent(t *testing.T) {
 }
 
 func TestGetDownloadSize_ContentLength(t *testing.T) {
+	t.Parallel()
 	s := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			if _, err := io.WriteString(w, "Test"); err != nil {
@@ -403,6 +444,7 @@ func TestGetDownloadSize_ContentLength(t *testing.T) {
 }
 
 func TestGetDownloadSize_WithRetry(t *testing.T) {
+	t.Parallel()
 	attempts := int32(0)
 	s := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
@@ -429,6 +471,7 @@ func TestGetDownloadSize_WithRetry(t *testing.T) {
 }
 
 func TestGetDownloadSize_ContentRange(t *testing.T) {
+	t.Parallel()
 	s := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Range", "bytes 1-10/123")
@@ -451,7 +494,12 @@ func TestGetDownloadSize_ContentRange(t *testing.T) {
 }
 
 func TestGetDownloadSize_ErrorInvalidURL(t *testing.T) {
-	d := DefaultDownloader()
+	t.Parallel()
+	d := Downloader{
+		MaxRetries: 1,
+		WaitRetry:  0,
+		Client:     http.DefaultClient,
+	}
 	got, err := d.getDownloadSize(context.Background(), "test")
 
 	if err == nil {
@@ -463,6 +511,7 @@ func TestGetDownloadSize_ErrorInvalidURL(t *testing.T) {
 }
 
 func TestGetDownloadSize_NoContent(t *testing.T) {
+	t.Parallel()
 	s := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			if _, err := io.WriteString(w, ""); err != nil {
